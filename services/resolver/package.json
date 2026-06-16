@@ -1,0 +1,16 @@
+{
+  "name": "@openrails/resolver",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsc",
+    "dev": "npx ts-node --esm src/server.ts",
+    "deploy": "wrangler deploy"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.0.0",
+    "ts-node": "^10.9.0",
+    "typescript": "^5.9.3"
+  }
+}

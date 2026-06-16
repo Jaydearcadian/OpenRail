@@ -1,0 +1,22 @@
+{
+  "name": "@openrails/sdk",
+  "version": "0.1.0",
+  "description": "OpenRails V1 — Intent-Driven Clearing & Settlement SDK for Sui",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "@mysten/sui": "^1.0.0",
+    "@mysten/walrus": "^0.4.0",
+    "buffer": "^6.0.3"
+  },
+  "devDependencies": {
+    "typescript": "^5.4.0",
+    "@types/node": "^20.0.0",
+    "ts-node": "^10.9.0"
+  }
+}

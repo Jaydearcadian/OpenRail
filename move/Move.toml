@@ -1,0 +1,14 @@
+[package]
+name = "open_rails"
+version = "0.0.1"
+edition = "2024.beta"
+
+[dependencies]
+Sui = { git = "https://github.com/MystenLabs/sui.git", subdir = "crates/sui-framework/packages/sui-framework", rev = "framework/testnet" }
+# No DeepBook dependency: the DeepBook V3 swap is composed at the transaction
+# (PTB) layer — see sdk/src/ptb.ts buildClaimAndSwapPTB. The published DeepBook
+# pool function is threaded into the PTB alongside paycard_v1::execute_claim_round,
+# so this package stays free of external DeFi dependencies and always builds.
+
+[addresses]
+open_rails = "0x0"
