@@ -1,3 +1,4 @@
+import { Buffer } from "buffer";
 import type { WalrusMetadataV1, WalrusStorageOptions, OpenRailsLink } from "./types.js";
 
 export interface WalrusUploadResult {
@@ -23,6 +24,25 @@ function buildUploadUrl(publisherUrl: string, opts?: WalrusStorageOptions): stri
   const epochs = opts?.epochs ?? 1;
   const deletable = opts?.deletable ?? true;
   return `${publisherUrl}/v1/blobs?epochs=${epochs}&deletable=${deletable}`;
+}
+
+export function walrusBlobIdToBytes(blobId: string): Uint8Array {
+  const clean = blobId.startsWith("0x") ? blobId.slice(2) : blobId;
+  let bytes: Uint8Array;
+
+  if (/^[0-9a-fA-F]{64}$/.test(clean)) {
+    bytes = new Uint8Array(clean.match(/.{2}/g)!.map((b) => parseInt(b, 16)));
+  } else {
+    let normalized = clean.replace(/-/g, "+").replace(/_/g, "/");
+    while (normalized.length % 4) normalized += "=";
+    bytes = new Uint8Array(Buffer.from(normalized, "base64"));
+  }
+
+  if (bytes.length !== 32) {
+    throw new Error("Walrus BlobID must decode to exactly 32 bytes.");
+  }
+
+  return bytes;
 }
 
 async function putBlob(url: string, bytes: Uint8Array): Promise<WalrusUploadResult> {

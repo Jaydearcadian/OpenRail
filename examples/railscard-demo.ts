@@ -13,11 +13,12 @@
  *   Unix timestamp    → stream starts at payer's fixed time
  */
 
-import { Ed25519Keypair } from "@mysten/sui/keypairs/ed25519";
-import { decodeSuiPrivateKey } from "@mysten/sui/cryptography";
-import { SuiClient } from "@mysten/sui/client";
 import {
+  Ed25519Keypair,
+  decodeSuiPrivateKey,
+  SuiClient,
   OpenRailsSDK,
+  bytesToHex,
   signEnvelopeEd25519,
   signVaultEd25519,
   buildCreateVaultPTB,
@@ -34,7 +35,7 @@ import {
   type OpenRailsIntentV1,
   type RailsCardPayload,
   type VaultParams,
-} from "../src/index.js";
+} from "../sdk/dist/index.js";
 
 // Run: sui keytool export --key-identity <your-address>
 // Copy the "exportedPrivateKey: suiprivkey1..." value and set it here:
@@ -132,6 +133,8 @@ async function main() {
   const envelope = await signEnvelopeEd25519(intent, payerKeypair);
   const railsCardToken = OpenRailsSDK.serializePayload({
     linkType: "railscard",
+    vaultObjectId,
+    vaultSignature: bytesToHex(vaultSignature),
     envelope,
     intent,
     recipientAddress: undefined, // wildcard — recipient fills in their own address
@@ -151,6 +154,8 @@ async function main() {
   //
   // const payload: RailsCardPayload = {
   //   linkType: "railscard",
+//   vaultObjectId,
+//   vaultSignature: bytesToHex(vaultSignature),
   //   envelope,
   //   intent,
   //   recipientAddress: undefined,
@@ -176,7 +181,7 @@ async function main() {
   // TIER-2 GASLESS: this is the ONLY call the recipient needs external gas for.
   // To make it fully gasless, the protocol sponsors it instead of the recipient:
   //
-  //   import { prepareForSponsorship, executeSponsoredTx } from "../src/index.js";
+  //   import { prepareForSponsorship, executeSponsoredTx } from "../sdk/dist/index.js";
   //   const txBytes = await prepareForSponsorship(unsealTx, recipientAddress, sponsorAddress, client);
   //   const { signature: userSig } = await recipientKeypair.signTransaction(txBytes);
   //   await executeSponsoredTx(txBytes, userSig, sponsorKeypair, client);

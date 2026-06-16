@@ -9,3 +9,4 @@ export * from "./vault.js";
 export * from "./accrual.js";
 export * from "./heartbeat.js";
 export * from "./gateway.js";
+export * from "./sui.js";

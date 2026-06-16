@@ -19,7 +19,7 @@ Every open channel maintains four critical variables:
 | **Velocity Pointer** | `max_flow_rate_per_second: u64` | Immutable flow rate — the payer cannot accelerate drain post-mint |
 | **Temporal Anchor** | `last_checkpoint_timestamp: u64` | Exact moment of last balance extraction; accrual calculates from here |
 
-Channels do not burn gas continuously. Settlement is **lazy**: the contract computes `Δt × rate` at claim time, transfers the accrued amount, and advances the checkpoint. Gas is paid exactly twice — once to open the channel, once to close it.
+Channels do not burn gas continuously. Settlement is **lazy**: the contract computes `Δt × rate` at claim time, transfers the accrued amount, and advances the checkpoint. Gas is paid only by transactions that open, claim, resolve, or close a channel.
 
 ---
 
@@ -74,7 +74,7 @@ The merchant's invoice signature is verified off-chain by the payer's client bef
 
 [ PHASE 3: SETTLEMENT ]
   Depleted  → recipient claimed full pool → SettlementReceipt(type=0)
-  Expired   → duration elapsed; STN-Delta sweeps residual to payer → SettlementReceipt(type=1)
+  Expired   → duration elapsed; accrued value is paid to recipient, unearned residual returns to recovery → SettlementReceipt(type=1)
   Cancelled → payer cancels; remaining balance refunded → SettlementReceipt(type=2)
   Channel object is destroyed or marked depleted. Cannot be reopened.
 ```
@@ -98,7 +98,7 @@ accrued = (current_time − last_checkpoint) × max_flow_rate_per_second
 
 The recipient calls `claim_settlement_round` whenever they want. Accrual since the last claim is calculated inline and transferred atomically. The checkpoint advances. The next claim calculates from there.
 
-**STN-Delta Residual Recovery:** When the stream window closes, any unspent buffer is swept atomically back to the payer's recovery address via `resolve_residual_delta_expiry`. No manual clawback, no relayer fee extraction, no leftover dust.
+**STN-Delta Residual Recovery:** When the stream window closes, accrued-but-unclaimed value is paid to the recipient first. Only the unearned buffer is swept back to the payer's recovery address via `resolve_residual_delta_expiry`. No manual clawback, no relayer fee extraction, no leftover dust.
 
 ---
 
@@ -112,12 +112,12 @@ Because Sui does not push events to HTTP endpoints, OpenRails ships an off-chain
   2. Mirror calculate_accrual_debt in TypeScript → project current balance
   3. Sign StreamHeartbeat with gateway Ed25519 keypair
   4. POST signed JSON payload to merchant webhook URL
-  5. On SettlementReceipt event → emit terminal notification → remove from watch list
+  5. On SettlementReceipt event → emit signed terminal notification → remove from watch list
 ```
 
-Merchants receive a standard HTTPS webhook interface over a Sui event stream — no Sui SDK required on their side. Each heartbeat carries an Ed25519 signature over a deterministic JSON encoding of all payload fields; merchants verify with `verifyHeartbeat(heartbeat, gatewayPublicKeyHex)`.
+Merchants receive a standard HTTPS webhook interface over a Sui event stream — no Sui SDK required on their side. Heartbeats, buffer-low alerts, and terminal notifications carry Ed25519 signatures over deterministic JSON; merchants verify with `verifyGatewayEvent(event, gatewayPublicKeyHex)`.
 
-Gateway costs **zero gas** — it reads state and projects math off-chain. The payer funds gas exactly twice (open + close). The merchant receives continuous real-time status updates at zero additional cost.
+Gateway costs **zero gas** because it reads state and projects math off-chain. On-chain gas is still paid by whichever wallet submits mint, claim, expiry, cancel, or unseal transactions.
 
 ---
 
@@ -135,7 +135,7 @@ Gateway costs **zero gas** — it reads state and projects math off-chain. The p
 
 [ STREAMING ]
   claim_settlement_round() → lazy accrual math → coin transfer → checkpoint advance
-  resolve_residual_delta_expiry() → STN-Delta sweep → unspent buffer → payer vault
+  resolve_residual_delta_expiry() → accrued-to-recipient + unearned residual-to-recovery
 
 [ SETTLEMENT ]
   SettlementReceipt event → canonical audit log (depleted | expired | cancelled)
@@ -179,9 +179,9 @@ move/
                             unseal_and_mint (on-chain Ed25519/secp256k1 verify), cancel_vault
     events.move           — typed events for all state transitions including SettlementReceipt
   tests/
-    paycard_tests.move       — 8 unit tests: mint, partial claim, depletion,
-                               cancel, unauthorized cancel, expiry, early-resolve abort,
-                               non-recipient claim abort
+    paycard_tests.move       — 11 unit tests: mint, claims, cancellation auth,
+                               expiry residual split, early-resolve abort,
+                               non-recipient entry and composable claim aborts
     sealed_vault_tests.move  — 5 unit tests: vault creation, invalid sig rejection,
                                cancel, unauthorized cancel, start sentinel
 
@@ -189,15 +189,15 @@ sdk/
   src/
     types.ts      — all interfaces: intent, envelope, link types, PTB params, SettlementReceiptV1
     sdk.ts        — OpenRailsSDK.serializePayload / deserializePayload
-    signer.ts     — signEnvelopeEd25519, signEnvelopeSecp256k1
+    signer.ts     — signEnvelope*, verifyEnvelope, RailsFlow merchant binding
     vault.ts      — buildVaultMessage, signVaultEd25519, signVaultSecp256k1
-    walrus.ts     — uploadMetadata, fetchMetadata, WALRUS_ENDPOINTS
+    walrus.ts     — upload/fetch helpers, BlobID conversion, WALRUS_ENDPOINTS
     ptb.ts        — PTB builders for all on-chain operations
     network.ts    — NETWORKS constants, COIN_TYPES
     sponsor.ts    — prepareForSponsorship, executeSponsoredTx
     accrual.ts    — calculateAccrualDebt, projectStreamAt (TypeScript mirror of Move math)
-    heartbeat.ts  — buildHeartbeat (signed payload), verifyHeartbeat
-    gateway.ts    — startGateway (polling loop, webhook dispatch, terminal detection)
+    heartbeat.ts  — signed heartbeat, buffer-low, terminal event helpers
+    gateway.ts    — startGateway (polling loop, retries, signed terminal detection)
 
 examples/
   railscard-demo.ts   — RailsCard flow: vault creation → signing → unseal → claim
@@ -237,9 +237,9 @@ sui client publish --gas-budget 100000000
 ### Run examples
 ```bash
 cd sdk
-npx ts-node examples/railscard-demo.ts   # outbound grant via SealedVault
-npx ts-node examples/railsflow-demo.ts   # inbound billing memo
-npx ts-node examples/gateway-demo.ts     # offline gateway heartbeat round-trip
+npx ts-node --esm --project tsconfig.json ../examples/railscard-demo.ts
+npx ts-node --esm --project tsconfig.json ../examples/railsflow-demo.ts
+npx ts-node --esm --project tsconfig.json ../examples/gateway-demo.ts
 ```
 
 ---
@@ -249,14 +249,14 @@ npx ts-node examples/gateway-demo.ts     # offline gateway heartbeat round-trip
 | Threat | Mitigation |
 |--------|-----------|
 | Over-extraction from stream | `calculate_accrual_debt` hard-capped at pool balance |
-| Non-recipient claiming | `claim_settlement_round` asserts `sender == paycard.recipient` |
+| Non-recipient claiming | `execute_claim_round` and `claim_settlement_round` assert `sender == paycard.recipient` |
 | Unauthorized cancel | `cancel_paycard` asserts `sender == paycard.payer` |
-| Unauthorized delta sweep | `resolve_residual_delta_expiry` asserts `sender ∈ {payer, recovery_target}` |
+| Unauthorized delta sweep | `resolve_residual_delta_expiry` asserts `sender ∈ {recipient, payer, recovery_target}` |
 | Vault replay | Nonce embedded in signed message; one vault = one claim |
 | Vault sig forgery | `ed25519_verify` / `secp256k1_verify` in Move — invalid sig aborts `EInvalidSignature` |
 | Gas-reserve tampering | `gas_amount` included in signed vault message — any mismatch fails sig verify |
 | Vault cancel by stranger | `cancel_vault` asserts `sender == vault.payer` |
-| Payload tampering (RailsFlow) | Off-chain signature over intent fields; merchant address hardcoded |
+| Payload tampering (RailsFlow) | Off-chain signature over intent plus merchant address; payer verifies before funding |
 | Timestamp manipulation | Clock fed from Sui's trusted shared Clock object (`0x6`) |
 
 ---

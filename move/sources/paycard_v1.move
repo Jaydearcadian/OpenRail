@@ -112,6 +112,8 @@ module open_rails::paycard_v1 {
         clock_node: &Clock,
         ctx: &mut TxContext
     ): Coin<T> {
+        assert!(tx_context::sender(ctx) == paycard.recipient, ENotAuthorized);
+
         let current_time = clock::timestamp_ms(clock_node) / 1000;
         let end_time = paycard.start_timestamp + paycard.duration_seconds;
 
@@ -154,13 +156,12 @@ module open_rails::paycard_v1 {
         clock_node: &Clock,
         ctx: &mut TxContext
     ) {
-        assert!(tx_context::sender(ctx) == paycard.recipient, ENotAuthorized);
         let coin_out = execute_claim_round(paycard, clock_node, ctx);
         transfer::public_transfer(coin_out, paycard.recipient);
     }
 
     /// STN-Delta expiry trigger. Sweeps unspent buffer back to recovery vault after duration closes.
-    /// Only payer or residual_delta_recipient may call. Idempotent if already depleted.
+    /// The Paycard owner, payer, or residual_delta_recipient may call. Idempotent if already depleted.
     public entry fun resolve_residual_delta_expiry<T>(
         paycard: &mut Paycard<T>,
         clock_node: &Clock,
@@ -174,29 +175,41 @@ module open_rails::paycard_v1 {
 
         let caller = tx_context::sender(ctx);
         assert!(
-            caller == paycard.payer || caller == paycard.residual_delta_recipient,
+            caller == paycard.recipient
+                || caller == paycard.payer
+                || caller == paycard.residual_delta_recipient,
             ENotAuthorized
         );
 
         let id_for_event = object::uid_to_inner(&paycard.id);
-        let total_remaining = balance::value(&paycard.allocation_pool);
+        let accrued_debt = calculate_accrual_debt(paycard, current_time);
 
-        if (total_remaining > 0) {
-            let residual_balance = balance::split(&mut paycard.allocation_pool, total_remaining);
+        if (accrued_debt > 0) {
+            let accrued_balance = balance::split(&mut paycard.allocation_pool, accrued_debt);
+            let accrued_coin = coin::from_balance(accrued_balance, ctx);
+            transfer::public_transfer(accrued_coin, paycard.recipient);
+            events::emit_claimed(id_for_event, accrued_debt, end_time);
+            paycard.last_checkpoint_timestamp = end_time;
+        };
+
+        let residual_remaining = balance::value(&paycard.allocation_pool);
+
+        if (residual_remaining > 0) {
+            let residual_balance = balance::split(&mut paycard.allocation_pool, residual_remaining);
             let residual_coin = coin::from_balance(residual_balance, ctx);
             transfer::public_transfer(residual_coin, paycard.residual_delta_recipient);
-            events::emit_residual_returned(id_for_event, total_remaining, paycard.residual_delta_recipient);
+            events::emit_residual_returned(id_for_event, residual_remaining, paycard.residual_delta_recipient);
         };
 
         paycard.status = STATUS_DEPLETED;
 
-        let total_paid = paycard.initial_allocation - total_remaining;
+        let total_paid = paycard.initial_allocation - residual_remaining;
         events::emit_settlement_receipt(
             id_for_event,
             paycard.payer,
             paycard.recipient,
             total_paid,
-            total_remaining,
+            residual_remaining,
             events::settlement_type_expired(),
             current_time,
         );

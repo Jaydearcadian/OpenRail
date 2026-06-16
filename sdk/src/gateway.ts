@@ -2,7 +2,7 @@ import { SuiClient } from "@mysten/sui/client";
 import type { EventId } from "@mysten/sui/client";
 import { Ed25519Keypair } from "@mysten/sui/keypairs/ed25519";
 import type { StreamState } from "./accrual.js";
-import { buildHeartbeat } from "./heartbeat.js";
+import { buildBufferLowEvent, buildHeartbeat, buildTerminalEvent } from "./heartbeat.js";
 
 export interface GatewayConfig {
   suiRpcUrl: string;
@@ -10,6 +10,7 @@ export interface GatewayConfig {
   paycardIds: string[];
   webhookUrl: string;
   intervalMs?: number;           // Default: 10_000ms
+  bufferLowThreshold?: bigint | string;
   signerKeypair: Ed25519Keypair;
 }
 
@@ -47,16 +48,24 @@ function hydrateStreamState(paycardId: string, fields: Record<string, any>): Str
 
 // --- Webhook dispatch ---
 
-async function dispatch(webhookUrl: string, payload: unknown): Promise<void> {
-  try {
-    await fetch(webhookUrl, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    });
-  } catch {
-    // Non-fatal — gateway continues on delivery failure
+async function dispatch(webhookUrl: string, payload: unknown, attempts = 3): Promise<boolean> {
+  for (let attempt = 1; attempt <= attempts; attempt++) {
+    try {
+      const response = await fetch(webhookUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      if (response.ok) return true;
+    } catch {
+      // Retry below.
+    }
+
+    if (attempt < attempts) {
+      await new Promise((resolve) => setTimeout(resolve, 100 * attempt));
+    }
   }
+  return false;
 }
 
 // --- Main ---
@@ -78,6 +87,9 @@ async function dispatch(webhookUrl: string, payload: unknown): Promise<void> {
 export async function startGateway(config: GatewayConfig): Promise<GatewayHandle> {
   const { suiRpcUrl, packageId, webhookUrl, signerKeypair } = config;
   const intervalMs = config.intervalMs ?? 10_000;
+  const bufferLowThreshold = config.bufferLowThreshold === undefined
+    ? undefined
+    : BigInt(config.bufferLowThreshold);
 
   const client = new SuiClient({ url: suiRpcUrl });
   const publicKeyHex = Buffer.from(signerKeypair.getPublicKey().toRawBytes()).toString("hex");
@@ -85,10 +97,8 @@ export async function startGateway(config: GatewayConfig): Promise<GatewayHandle
   // Mutable watch list — paycards are removed when they reach terminal state
   const watching = new Set<string>(config.paycardIds);
 
-  // Per-Paycard event cursor so we don't re-process events after restart
-  const eventCursors = new Map<string, EventId | null>(
-    config.paycardIds.map((id) => [id, null])
-  );
+  let eventCursor: EventId | null = null;
+  let sequence = 0;
 
   let stopped = false;
 
@@ -97,39 +107,38 @@ export async function startGateway(config: GatewayConfig): Promise<GatewayHandle
 
     const nowSec = Math.floor(Date.now() / 1000);
 
-    for (const paycardId of [...watching]) {
-      // 1. Check for terminal event before fetching object
-      try {
-        const eventsPage = await client.queryEvents({
-          query: {
-            MoveEventType: `${packageId}::events::SettlementReceipt`,
-          },
-          cursor: eventCursors.get(paycardId) ?? undefined,
-          limit: 50,
-        });
+    try {
+      const eventsPage = await client.queryEvents({
+        query: {
+          MoveEventType: `${packageId}::events::SettlementReceipt`,
+        },
+        cursor: eventCursor ?? undefined,
+        limit: 50,
+      });
 
-        for (const ev of eventsPage.data) {
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          const parsed = ev.parsedJson as Record<string, any> | undefined;
-          if (parsed && parsed["paycard_id"] === paycardId) {
-            // Terminal event detected — emit final heartbeat then remove from watch
-            await dispatch(webhookUrl, {
-              paycardId,
-              terminal: true,
-              settlementType: parsed["settlement_type"],
-              totalPaidToRecipient: parsed["total_paid_to_recipient"],
-              residualReturnedToPayer: parsed["residual_returned_to_payer"],
-              closedAtSeconds: parsed["closed_at_seconds"],
-            });
-            watching.delete(paycardId);
-            break;
-          }
-          eventCursors.set(paycardId, ev.id);
+      for (const ev of eventsPage.data) {
+        eventCursor = ev.id;
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const parsed = ev.parsedJson as Record<string, any> | undefined;
+        if (!parsed) continue;
+        const paycardId = parsed["paycard_id"];
+        if (typeof paycardId === "string" && watching.has(paycardId)) {
+          const terminalEvent = await buildTerminalEvent({
+            paycardId,
+            settlementType: Number(parsed["settlement_type"]),
+            totalPaidToRecipient: String(parsed["total_paid_to_recipient"]),
+            residualReturnedToPayer: String(parsed["residual_returned_to_payer"]),
+            closedAtSeconds: Number(parsed["closed_at_seconds"]),
+          }, nowSec, ++sequence, signerKeypair);
+          await dispatch(webhookUrl, terminalEvent);
+          watching.delete(paycardId);
         }
-      } catch {
-        // RPC error — skip event check this tick
       }
+    } catch {
+      // RPC error, skip event check this tick.
+    }
 
+    for (const paycardId of [...watching]) {
       if (!watching.has(paycardId)) continue;
 
       // 2. Fetch object and project accrual
@@ -147,10 +156,25 @@ export async function startGateway(config: GatewayConfig): Promise<GatewayHandle
         const state = hydrateStreamState(paycardId, fields);
 
         // 3. Build signed heartbeat
-        const heartbeat = await buildHeartbeat(state, nowSec, signerKeypair);
+        const heartbeat = await buildHeartbeat(state, nowSec, signerKeypair, ++sequence);
 
         // 4. Dispatch
         await dispatch(webhookUrl, heartbeat);
+
+        if (
+          bufferLowThreshold !== undefined &&
+          BigInt(heartbeat.projectedBalance) <= bufferLowThreshold
+        ) {
+          const bufferLowEvent = await buildBufferLowEvent(
+            paycardId,
+            BigInt(heartbeat.projectedBalance),
+            bufferLowThreshold,
+            nowSec,
+            ++sequence,
+            signerKeypair
+          );
+          await dispatch(webhookUrl, bufferLowEvent);
+        }
 
         if (state.status === "depleted") {
           watching.delete(paycardId);

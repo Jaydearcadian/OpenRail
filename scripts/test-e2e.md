@@ -4,11 +4,12 @@
 
 ```bash
 cd sdk && npm run build
-node --input-type=module --eval "$(cat scripts/tier1.mjs)"
+node scripts/tier1.mjs
 ```
 
-All 24 checks should pass. This verifies: accrual math, envelope serialization,
-short links, network addresses, PTB construction, and Ed25519 signing.
+All 31 checks should pass. This verifies: accrual math, envelope serialization,
+short links, network addresses, PTB construction, Ed25519 signing, RailsFlow
+merchant binding, gateway event signatures, and Walrus BlobID conversion.
 
 ---
 
@@ -20,6 +21,8 @@ import { uploadEnvelope, fetchEnvelope, buildShortLink, WALRUS_ENDPOINTS } from 
 
 const payload = {
   linkType: 'railscard',
+  vaultObjectId: '0xvault',
+  vaultSignature: 'ab'.repeat(64),
   envelope: { payerPublicKey: '0xtest', nonce: 1, signature: '0xsig', curve: 'ed25519' },
   intent: {
     paycardId: '0x1',
@@ -70,12 +73,12 @@ sui client gas                        # confirm balance > 0
 ```bash
 cd move
 sui move build                        # must complete with no errors
-sui move test                         # must show: 13 tests passed
+sui move test                         # must show: 16 tests passed
 ```
 
 Expected test output:
 ```
-Test result: OK. Total tests: 13; passed: 13; failed: 0
+Test result: OK. Total tests: 16; passed: 16; failed: 0
 ```
 
 ### Deploy to testnet

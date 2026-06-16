@@ -4,13 +4,39 @@ import type { StreamState } from "./accrual.js";
 import { projectStreamAt } from "./accrual.js";
 
 export interface StreamHeartbeat {
+  eventType: "stream.accrual_heartbeat";
   paycardId: string;
-  timestamp: number;                // Unix seconds — when snapshot was taken
+  timestamp: number;
+  sequence: number;
   accruedSinceCheckpoint: string;   // bigint serialised as decimal string
   projectedBalance: string;         // bigint serialised as decimal string
   isExhausted: boolean;
-  signature: string;                // hex Ed25519 sig over deterministic JSON of fields above
+  signature: string;
 }
+
+export interface BufferLowEvent {
+  eventType: "channel.buffer_low";
+  paycardId: string;
+  timestamp: number;
+  sequence: number;
+  projectedBalance: string;
+  threshold: string;
+  signature: string;
+}
+
+export interface GatewayTerminalEvent {
+  eventType: "channel.terminated";
+  paycardId: string;
+  timestamp: number;
+  sequence: number;
+  settlementType: number;
+  totalPaidToRecipient: string;
+  residualReturnedToPayer: string;
+  closedAtSeconds: number;
+  signature: string;
+}
+
+export type SignedGatewayEvent = StreamHeartbeat | BufferLowEvent | GatewayTerminalEvent;
 
 function toHex(bytes: Uint8Array): string {
   return Array.from(bytes)
@@ -18,15 +44,11 @@ function toHex(bytes: Uint8Array): string {
     .join("");
 }
 
-function heartbeatMessage(hb: Omit<StreamHeartbeat, "signature">): Uint8Array {
-  // Deterministic: sorted keys, no trailing whitespace.
-  const json = JSON.stringify({
-    paycardId:               hb.paycardId,
-    timestamp:               hb.timestamp,
-    accruedSinceCheckpoint:  hb.accruedSinceCheckpoint,
-    projectedBalance:        hb.projectedBalance,
-    isExhausted:             hb.isExhausted,
-  });
+function signedEventMessage(event: Omit<SignedGatewayEvent, "signature">): Uint8Array {
+  const sorted = Object.fromEntries(
+    Object.entries(event).sort(([a], [b]) => a.localeCompare(b))
+  );
+  const json = JSON.stringify(sorted);
   return new TextEncoder().encode(json);
 }
 
@@ -38,21 +60,60 @@ function heartbeatMessage(hb: Omit<StreamHeartbeat, "signature">): Uint8Array {
 export async function buildHeartbeat(
   state: StreamState,
   currentTimeSec: number,
-  signerKeypair: Ed25519Keypair
+  signerKeypair: Ed25519Keypair,
+  sequence = 0
 ): Promise<StreamHeartbeat> {
   const { accrued, remaining, isExhausted } = projectStreamAt(state, currentTimeSec);
 
   const unsigned: Omit<StreamHeartbeat, "signature"> = {
+    eventType:              "stream.accrual_heartbeat",
     paycardId:              state.paycardId,
     timestamp:              currentTimeSec,
+    sequence,
     accruedSinceCheckpoint: accrued.toString(),
     projectedBalance:       remaining.toString(),
     isExhausted,
   };
 
-  const msgBytes = heartbeatMessage(unsigned);
+  const msgBytes = signedEventMessage(unsigned);
   const sigBytes = await signerKeypair.sign(msgBytes);
 
+  return { ...unsigned, signature: toHex(sigBytes) };
+}
+
+export async function buildBufferLowEvent(
+  paycardId: string,
+  projectedBalance: bigint,
+  threshold: bigint,
+  currentTimeSec: number,
+  sequence: number,
+  signerKeypair: { sign(bytes: Uint8Array): Promise<Uint8Array> }
+): Promise<BufferLowEvent> {
+  const unsigned: Omit<BufferLowEvent, "signature"> = {
+    eventType: "channel.buffer_low",
+    paycardId,
+    timestamp: currentTimeSec,
+    sequence,
+    projectedBalance: projectedBalance.toString(),
+    threshold: threshold.toString(),
+  };
+  const sigBytes = await signerKeypair.sign(signedEventMessage(unsigned));
+  return { ...unsigned, signature: toHex(sigBytes) };
+}
+
+export async function buildTerminalEvent(
+  event: Omit<GatewayTerminalEvent, "eventType" | "timestamp" | "sequence" | "signature">,
+  currentTimeSec: number,
+  sequence: number,
+  signerKeypair: { sign(bytes: Uint8Array): Promise<Uint8Array> }
+): Promise<GatewayTerminalEvent> {
+  const unsigned: Omit<GatewayTerminalEvent, "signature"> = {
+    eventType: "channel.terminated",
+    timestamp: currentTimeSec,
+    sequence,
+    ...event,
+  };
+  const sigBytes = await signerKeypair.sign(signedEventMessage(unsigned));
   return { ...unsigned, signature: toHex(sigBytes) };
 }
 
@@ -64,8 +125,15 @@ export async function verifyHeartbeat(
   heartbeat: StreamHeartbeat,
   gatewayPublicKeyHex: string
 ): Promise<boolean> {
-  const { signature, ...unsigned } = heartbeat;
-  const msgBytes = heartbeatMessage(unsigned);
+  return verifyGatewayEvent(heartbeat, gatewayPublicKeyHex);
+}
+
+export async function verifyGatewayEvent(
+  event: SignedGatewayEvent,
+  gatewayPublicKeyHex: string
+): Promise<boolean> {
+  const { signature, ...unsigned } = event;
+  const msgBytes = signedEventMessage(unsigned);
   const sigBytes = new Uint8Array(
     signature.match(/.{2}/g)!.map((b) => parseInt(b, 16))
   );

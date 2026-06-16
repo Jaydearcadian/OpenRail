@@ -12,14 +12,14 @@
  */
 
 import * as http from "http";
-import { Ed25519Keypair } from "@mysten/sui/keypairs/ed25519";
 import {
+  Ed25519Keypair,
   calculateAccrualDebt,
   projectStreamAt,
   buildHeartbeat,
   verifyHeartbeat,
-} from "../sdk/src/index.js";
-import type { StreamState, StreamHeartbeat } from "../sdk/src/index.js";
+} from "../sdk/dist/index.js";
+import type { StreamState, StreamHeartbeat } from "../sdk/dist/index.js";
 
 // --- Mock stream configuration ---
 

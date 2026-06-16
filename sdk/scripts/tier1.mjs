@@ -7,9 +7,14 @@ import {
   COIN_TYPES,
   WALRUS_ENDPOINTS,
   signEnvelopeEd25519,
+  bindRailsFlowMerchant,
+  verifyRailsFlowMerchantEnvelope,
+  buildHeartbeat,
+  verifyGatewayEvent,
+  walrusBlobIdToBytes,
   buildMintPTB,
   buildClaimPTB,
-} from './dist/index.js';
+} from '../dist/index.js';
 import { Ed25519Keypair } from '@mysten/sui/keypairs/ed25519';
 
 let passed = 0;
@@ -70,6 +75,8 @@ console.log('\nEnvelope serialization');
 
 const testPayload = {
   linkType: 'railscard',
+  vaultObjectId: '0xvault',
+  vaultSignature: 'ab'.repeat(64),
   envelope: { payerPublicKey: '0xabc', nonce: 1, signature: '0xdef', curve: 'ed25519' },
   intent: {
     paycardId: '0x1',
@@ -222,6 +229,75 @@ check('payerPublicKey is 64 hex chars (32 bytes)',
 // 24
 check('nonce is a positive number',
   typeof env.nonce === 'number' && env.nonce > 0
+);
+
+// ── RailsFlow merchant binding ────────────────────────────────────────────────
+console.log('\nRailsFlow merchant binding');
+
+const merchantKp = Ed25519Keypair.generate();
+const merchantAddress = merchantKp.getPublicKey().toSuiAddress();
+const flowIntent = { ...testIntent, residualDeltaRecipient: '0xpayer' };
+const merchantEnvelope = await signEnvelopeEd25519(
+  bindRailsFlowMerchant(flowIntent, merchantAddress),
+  merchantKp,
+  42
+);
+const flowPayload = {
+  linkType: 'railsflow',
+  envelope: merchantEnvelope,
+  intent: flowIntent,
+  merchantAddress,
+};
+
+// 25
+check('valid RailsFlow merchant envelope verifies',
+  await verifyRailsFlowMerchantEnvelope(flowPayload) === true
+);
+// 26
+check('tampered RailsFlow merchant address fails verification',
+  await verifyRailsFlowMerchantEnvelope({
+    ...flowPayload,
+    merchantAddress: '0x' + '9'.repeat(64),
+  }) === false
+);
+
+// ── Gateway event signatures ─────────────────────────────────────────────────
+console.log('\nGateway event signatures');
+
+const gatewayKp = Ed25519Keypair.generate();
+const gatewayPubkeyHex = Buffer.from(gatewayKp.getPublicKey().toRawBytes()).toString('hex');
+const heartbeat = await buildHeartbeat(base, 1010, gatewayKp, 1);
+
+// 27
+check('heartbeat includes typed gateway event fields',
+  heartbeat.eventType === 'stream.accrual_heartbeat' && heartbeat.sequence === 1
+);
+// 28
+check('signed gateway event verifies',
+  await verifyGatewayEvent(heartbeat, gatewayPubkeyHex) === true
+);
+// 29
+check('tampered gateway event fails verification',
+  await verifyGatewayEvent({ ...heartbeat, projectedBalance: '0' }, gatewayPubkeyHex) === false
+);
+
+// ── Walrus BlobID conversion ─────────────────────────────────────────────────
+console.log('\nWalrus BlobID conversion');
+
+// 30
+check('hex Walrus BlobID converts to 32 bytes',
+  walrusBlobIdToBytes('0x' + 'ab'.repeat(32)).length === 32
+);
+// 31
+check('invalid Walrus BlobID length is rejected',
+  (() => {
+    try {
+      walrusBlobIdToBytes('0x1234');
+      return false;
+    } catch {
+      return true;
+    }
+  })()
 );
 
 // ── Result ────────────────────────────────────────────────────────────────────

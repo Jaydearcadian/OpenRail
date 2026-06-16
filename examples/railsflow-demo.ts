@@ -9,19 +9,21 @@
  *   5. Merchant calls claim_settlement_round to draw down accrued balance
  */
 
-import { Ed25519Keypair } from "@mysten/sui/keypairs/ed25519";
-import { decodeSuiPrivateKey } from "@mysten/sui/cryptography";
-import { SuiClient } from "@mysten/sui/client";
 import {
+  Ed25519Keypair,
+  decodeSuiPrivateKey,
+  SuiClient,
   OpenRailsSDK,
+  bindRailsFlowMerchant,
   signEnvelopeEd25519,
+  verifyRailsFlowMerchantEnvelope,
   buildMintPTB,
   buildClaimPTB,
   NETWORKS,
   COIN_TYPES,
   type OpenRailsIntentV1,
   type RailsFlowPayload,
-} from "../src/index.js";
+} from "../sdk/dist/index.js";
 
 // Run: sui keytool export --key-identity <your-address>
 // Copy the "exportedPrivateKey: suiprivkey1..." value and set it here:
@@ -47,6 +49,7 @@ async function main() {
 
   // --- Step 1: Merchant creates billing memo ---
   const now = Math.floor(Date.now() / 1000);
+  const streamStart = now - 10;
   const intent: OpenRailsIntentV1 = {
     paycardId: crypto.randomUUID().replace(/-/g, ""),
     asset: {
@@ -56,13 +59,16 @@ async function main() {
     },
     allocationPoolSize: "105000000",  // 0.105 SUI — 0.1 SUI invoice + 5% buffer
     maxFlowRatePerSecond: "100000",   // ~0.0001 SUI/s → drains in 1000s
-    startTimestamp: now,
+    startTimestamp: streamStart,
     durationSeconds: 1000,
     residualDeltaRecipient: payerAddress, // STN-Delta: buffer returns to payer
   };
 
   // Merchant signs — locks in hardcoded merchant address
-  const merchantEnvelope = await signEnvelopeEd25519(intent, merchantKeypair);
+  const merchantEnvelope = await signEnvelopeEd25519(
+    bindRailsFlowMerchant(intent, merchantAddress),
+    merchantKeypair
+  );
 
   const billingMemo: RailsFlowPayload = {
     linkType: "railsflow",
@@ -78,6 +84,9 @@ async function main() {
   // --- Step 2: Payer receives and validates token ---
   const parsed = OpenRailsSDK.deserializePayload(token) as RailsFlowPayload;
   if (parsed.linkType !== "railsflow") throw new Error("Expected railsflow token");
+  if (!(await verifyRailsFlowMerchantEnvelope(parsed))) {
+    throw new Error("Invalid RailsFlow merchant signature.");
+  }
 
   console.log("\n[PAYER] Validates billing memo:");
   console.log("  Merchant payout:", parsed.merchantAddress);

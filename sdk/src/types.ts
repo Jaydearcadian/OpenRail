@@ -36,6 +36,8 @@ export interface OpenRailsPayloadV1 {
 /** Outbound grant — payer creates, recipient field may be blank or wildcarded */
 export interface RailsCardPayload extends OpenRailsPayloadV1 {
   linkType: "railscard";
+  vaultObjectId: string;           // SealedVault object to unseal before Paycard mint
+  vaultSignature: string;          // Hex signature over sealed_vault::build_vault_message()
   recipientAddress?: string;      // Optional wildcard; filled by claimant at broadcast
 }
 
