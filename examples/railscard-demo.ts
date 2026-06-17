@@ -24,6 +24,8 @@ import {
   buildCreateVaultPTB,
   buildUnsealVaultPTB,
   buildClaimPTB,
+  prepareForSponsorship,
+  executeSponsoredTx,
   uploadEnvelope,
   fetchEnvelope,
   buildShortLink,
@@ -38,8 +40,10 @@ import {
 } from "../sdk/dist/index.js";
 
 // Run: sui keytool export --key-identity <your-address>
-// Copy the "exportedPrivateKey: suiprivkey1..." value and set it here:
-//   export PAYER_PRIVATE_KEY="suiprivkey1..."
+// Copy the "exportedPrivateKey: **************" value into env vars only:
+//   export PAYER_PRIVATE_KEY="**************"
+// Optional funded-wallet proof run:
+//   export RECIPIENT_PRIVATE_KEY="**************"
 const PACKAGE_ID            = process.env.PACKAGE_ID            ?? "REPLACE_WITH_DEPLOYED_PACKAGE_ID";
 const PAYER_COIN_OBJECT_ID  = process.env.PAYER_COIN_OBJECT_ID  ?? "REPLACE_WITH_PAYER_COIN_OBJECT_ID";
 // Tier-2: a SECOND SUI coin object (distinct from PAYER_COIN_OBJECT_ID) to fund the gas reserve
@@ -49,21 +53,72 @@ const ALLOCATION = 1_050_000_000n; // 1.05 SUI — 5% safety buffer
 const GAS_RESERVE = 20_000_000n;   // 0.02 SUI — recipient's future claim gas
 const RATE = 1_000_000n;           // 0.001 SUI/s
 const DURATION = 1000;
+const TX_OPTIONS = { showObjectChanges: true, showEvents: true, showEffects: true };
+const PRINT_TOKENS = process.env.OPENRAILS_PRINT_TOKENS === "1";
+
+function requireObjectId(name: string, value: string) {
+  if (!value || value.startsWith("REPLACE_WITH")) {
+    throw new Error(`Set ${name}=0x... before running this demo.`);
+  }
+  if (!/^0x[0-9a-fA-F]+$/.test(value)) {
+    throw new Error(`${name} must be a Sui object ID or package ID beginning with 0x.`);
+  }
+}
+
+function keypairFromEnv(envName: string): Ed25519Keypair | undefined {
+  const privateKey = process.env[envName];
+  if (!privateKey) return undefined;
+
+  const parsed = decodeSuiPrivateKey(privateKey);
+  if (parsed.scheme !== "ED25519") {
+    throw new Error(`${envName} must be an Ed25519 Sui private key.`);
+  }
+
+  return Ed25519Keypair.fromSecretKey(parsed.secretKey);
+}
+
+async function hasSuiBalance(client: SuiClient, owner: string): Promise<boolean> {
+  const balance = await client.getBalance({ owner, coinType: COIN_TYPES.SUI });
+  return BigInt(balance.totalBalance) > 0n;
+}
+
+function explorerUrl(digest: string): string {
+  return `https://suiexplorer.com/txblock/${digest}?network=testnet`;
+}
+
+function logTx(label: string, digest: string) {
+  console.log(`${label}:`, digest);
+  console.log("  Explorer:", explorerUrl(digest));
+}
+
+async function waitForClaimableAccrual() {
+  console.log("[RECIPIENT] Waiting for at least one second of stream accrual...");
+  await new Promise((resolve) => setTimeout(resolve, 2_000));
+}
 
 async function main() {
-  const payerPrivKey = process.env.PAYER_PRIVATE_KEY;
-  if (!payerPrivKey) throw new Error("Set PAYER_PRIVATE_KEY=suiprivkey1... (run: sui keytool export --key-identity <address>)");
-  const { keypair: payerKeypair } = decodeSuiPrivateKey(payerPrivKey) as { keypair: Ed25519Keypair };
-  const recipientKeypair = Ed25519Keypair.generate(); // recipient stays ephemeral for demo
+  requireObjectId("PACKAGE_ID", PACKAGE_ID);
+  requireObjectId("PAYER_COIN_OBJECT_ID", PAYER_COIN_OBJECT_ID);
+  requireObjectId("PAYER_GAS_COIN_OBJECT_ID", PAYER_GAS_COIN_OBJECT_ID);
+  if (PAYER_COIN_OBJECT_ID === PAYER_GAS_COIN_OBJECT_ID) {
+    throw new Error("PAYER_GAS_COIN_OBJECT_ID must be distinct from PAYER_COIN_OBJECT_ID.");
+  }
+
+  const payerKeypair = keypairFromEnv("PAYER_PRIVATE_KEY");
+  if (!payerKeypair) throw new Error("Set PAYER_PRIVATE_KEY=************** (run: sui keytool export --key-identity <address>)");
+
+  const recipientKeypairFromEnv = keypairFromEnv("RECIPIENT_PRIVATE_KEY");
+  const recipientKeypair = recipientKeypairFromEnv ?? Ed25519Keypair.generate();
 
   const payerAddress = payerKeypair.getPublicKey().toSuiAddress();
   const recipientAddress = recipientKeypair.getPublicKey().toSuiAddress();
   const payerPubkeyHex = Buffer.from(payerKeypair.getPublicKey().toRawBytes()).toString("hex");
 
   const client = new SuiClient({ url: NETWORKS.testnet.rpc });
+  const sponsorUnseal = !recipientKeypairFromEnv || !(await hasSuiBalance(client, recipientAddress));
 
   console.log("Payer:     ", payerAddress);
-  console.log("Recipient: ", recipientAddress);
+  console.log("Recipient: ", recipientAddress, sponsorUnseal ? "(payer-sponsored unseal)" : "(self-funded)");
 
   // --- Step 1: Payer creates SealedVault ---
   const nonce = BigInt(Date.now()); // unique per vault
@@ -87,10 +142,11 @@ async function main() {
   const createResult = await client.signAndExecuteTransaction({
     signer: payerKeypair,
     transaction: createVaultTx,
-    options: { showObjectChanges: true },
+    options: TX_OPTIONS,
   });
 
-  console.log("\n[PAYER] Vault created, TX:", createResult.digest);
+  console.log("\n[PAYER] Vault created");
+  logTx("[PAYER] TX", createResult.digest);
 
   const vaultObj = createResult.objectChanges?.find(
     (c) => c.type === "created" && (c as { objectType?: string }).objectType?.includes("SealedVault")
@@ -140,7 +196,11 @@ async function main() {
     recipientAddress: undefined, // wildcard — recipient fills in their own address
   } as RailsCardPayload);
 
-  console.log("\n[PAYER] RailsCard bearer token:\n", railsCardToken);
+  if (PRINT_TOKENS) {
+    console.log("\n[PAYER] RailsCard bearer token:\n", railsCardToken);
+  } else {
+    console.log("\n[PAYER] RailsCard bearer token prepared (hidden; set OPENRAILS_PRINT_TOKENS=1 to print).");
+  }
   console.log("[PAYER] → token + vaultObjectId passed to recipient out-of-band");
 
   // --- Step 2b (optional): Publish envelope to Walrus — short link replaces the Base64 token ---
@@ -154,8 +214,8 @@ async function main() {
   //
   // const payload: RailsCardPayload = {
   //   linkType: "railscard",
-//   vaultObjectId,
-//   vaultSignature: bytesToHex(vaultSignature),
+  //   vaultObjectId,
+  //   vaultSignature: bytesToHex(vaultSignature),
   //   envelope,
   //   intent,
   //   recipientAddress: undefined,
@@ -179,15 +239,9 @@ async function main() {
   // (In production: recipient decodes token, fetches vault, submits their own address)
   //
   // TIER-2 GASLESS: this is the ONLY call the recipient needs external gas for.
-  // To make it fully gasless, the protocol sponsors it instead of the recipient:
-  //
-  //   import { prepareForSponsorship, executeSponsoredTx } from "../sdk/dist/index.js";
-  //   const txBytes = await prepareForSponsorship(unsealTx, recipientAddress, sponsorAddress, client);
-  //   const { signature: userSig } = await recipientKeypair.signTransaction(txBytes);
-  //   await executeSponsoredTx(txBytes, userSig, sponsorKeypair, client);
-  //
-  // Either way, the vault dispenses its gas reserve to the recipient here, so every
-  // subsequent claim_settlement_round (Step 4+) is self-funded — no sponsor needed again.
+  // This demo sponsors it by default for an ephemeral or unfunded recipient. The vault
+  // dispenses its gas reserve to the recipient here, so every subsequent
+  // claim_settlement_round (Step 4+) is self-funded — no sponsor needed again.
   console.log("\n[RECIPIENT] Unsealing vault...");
 
   const unsealTx = buildUnsealVaultPTB({
@@ -198,13 +252,21 @@ async function main() {
     typeArgument: COIN_TYPES.SUI,
   });
 
-  const unsealResult = await client.signAndExecuteTransaction({
-    signer: recipientKeypair,
-    transaction: unsealTx,
-    options: { showObjectChanges: true },
-  });
+  const unsealResult = sponsorUnseal
+    ? await (async () => {
+        const txBytes = await prepareForSponsorship(unsealTx, recipientAddress, payerAddress, client);
+        const { signature: userSig } = await recipientKeypair.signTransaction(txBytes);
+        const sponsored = await executeSponsoredTx(txBytes, userSig, payerKeypair, client);
+        return await client.waitForTransaction({ digest: sponsored.digest, options: TX_OPTIONS });
+      })()
+    : await client.signAndExecuteTransaction({
+        signer: recipientKeypair,
+        transaction: unsealTx,
+        options: TX_OPTIONS,
+      });
 
-  console.log("[RECIPIENT] Vault unsealed, TX:", unsealResult.digest);
+  console.log("[RECIPIENT] Vault unsealed");
+  logTx("[RECIPIENT] TX", unsealResult.digest);
 
   const paycardObj = unsealResult.objectChanges?.find(
     (c) => c.type === "created" && (c as { objectType?: string }).objectType?.includes("Paycard")
@@ -221,6 +283,7 @@ async function main() {
   console.log("  Gas reserve:       0.02 SUI dispensed → recipient self-funds future claims");
 
   // --- Step 4: Recipient claims accrued balance (funded by dispensed gas reserve) ---
+  await waitForClaimableAccrual();
   console.log("\n[RECIPIENT] Claiming settlement (gas from dispensed reserve)...");
 
   const claimTx = buildClaimPTB({
@@ -232,9 +295,10 @@ async function main() {
   const claimResult = await client.signAndExecuteTransaction({
     signer: recipientKeypair,
     transaction: claimTx,
+    options: TX_OPTIONS,
   });
 
-  console.log("[RECIPIENT] Claim TX:", claimResult.digest);
+  logTx("[RECIPIENT] Claim TX", claimResult.digest);
 }
 
 main().catch(console.error);

@@ -19,6 +19,8 @@ import {
   verifyRailsFlowMerchantEnvelope,
   buildMintPTB,
   buildClaimPTB,
+  prepareForSponsorship,
+  executeSponsoredTx,
   NETWORKS,
   COIN_TYPES,
   type OpenRailsIntentV1,
@@ -26,25 +28,70 @@ import {
 } from "../sdk/dist/index.js";
 
 // Run: sui keytool export --key-identity <your-address>
-// Copy the "exportedPrivateKey: suiprivkey1..." value and set it here:
-//   export PAYER_PRIVATE_KEY="suiprivkey1..."
+// Copy the "exportedPrivateKey: **************" value into env vars only:
+//   export PAYER_PRIVATE_KEY="**************"
+// Optional funded-wallet proof run:
+//   export MERCHANT_PRIVATE_KEY="**************"
 const PACKAGE_ID             = process.env.PACKAGE_ID             ?? "REPLACE_WITH_DEPLOYED_PACKAGE_ID";
 const FUNDING_COIN_OBJECT_ID = process.env.FUNDING_COIN_OBJECT_ID ?? "REPLACE_WITH_PAYER_COIN_OBJECT_ID";
+const TX_OPTIONS = { showObjectChanges: true, showEvents: true, showEffects: true };
+const PRINT_TOKENS = process.env.OPENRAILS_PRINT_TOKENS === "1";
+
+function requireObjectId(name: string, value: string) {
+  if (!value || value.startsWith("REPLACE_WITH")) {
+    throw new Error(`Set ${name}=0x... before running this demo.`);
+  }
+  if (!/^0x[0-9a-fA-F]+$/.test(value)) {
+    throw new Error(`${name} must be a Sui object ID or package ID beginning with 0x.`);
+  }
+}
+
+function keypairFromEnv(envName: string): Ed25519Keypair | undefined {
+  const privateKey = process.env[envName];
+  if (!privateKey) return undefined;
+
+  const parsed = decodeSuiPrivateKey(privateKey);
+  if (parsed.scheme !== "ED25519") {
+    throw new Error(`${envName} must be an Ed25519 Sui private key.`);
+  }
+
+  return Ed25519Keypair.fromSecretKey(parsed.secretKey);
+}
+
+async function hasSuiBalance(client: SuiClient, owner: string): Promise<boolean> {
+  const balance = await client.getBalance({ owner, coinType: COIN_TYPES.SUI });
+  return BigInt(balance.totalBalance) > 0n;
+}
+
+function explorerUrl(digest: string): string {
+  return `https://suiexplorer.com/txblock/${digest}?network=testnet`;
+}
+
+function logTx(label: string, digest: string) {
+  console.log(`${label}:`, digest);
+  console.log("  Explorer:", explorerUrl(digest));
+}
 
 async function main() {
-  const payerPrivKey = process.env.PAYER_PRIVATE_KEY;
-  if (!payerPrivKey) throw new Error("Set PAYER_PRIVATE_KEY=suiprivkey1... (run: sui keytool export --key-identity <address>)");
-  const { keypair: payerKeypair } = decodeSuiPrivateKey(payerPrivKey) as { keypair: Ed25519Keypair };
+  requireObjectId("PACKAGE_ID", PACKAGE_ID);
+  requireObjectId("FUNDING_COIN_OBJECT_ID", FUNDING_COIN_OBJECT_ID);
+
+  const payerKeypair = keypairFromEnv("PAYER_PRIVATE_KEY");
+  if (!payerKeypair) throw new Error("Set PAYER_PRIVATE_KEY=************** (run: sui keytool export --key-identity <address>)");
+
   // In RailsFlow the merchant is the fixed recipient — their address is embedded in the billing memo.
-  // For the demo, the merchant keypair is ephemeral; in production it would be a real funded wallet.
-  const merchantKeypair = Ed25519Keypair.generate();
+  // By default the merchant keypair is ephemeral for a gasless proof. Set MERCHANT_PRIVATE_KEY for a
+  // funded-wallet proof run instead.
+  const merchantKeypairFromEnv = keypairFromEnv("MERCHANT_PRIVATE_KEY");
+  const merchantKeypair = merchantKeypairFromEnv ?? Ed25519Keypair.generate();
 
   const merchantAddress = merchantKeypair.getPublicKey().toSuiAddress();
   const payerAddress = payerKeypair.getPublicKey().toSuiAddress();
 
   const client = new SuiClient({ url: NETWORKS.testnet.rpc });
+  const sponsorMerchantClaim = !merchantKeypairFromEnv || !(await hasSuiBalance(client, merchantAddress));
 
-  console.log("Merchant address:", merchantAddress);
+  console.log("Merchant address:", merchantAddress, sponsorMerchantClaim ? "(payer-sponsored claim)" : "(self-funded)");
   console.log("Payer address:   ", payerAddress);
 
   // --- Step 1: Merchant creates billing memo ---
@@ -79,7 +126,11 @@ async function main() {
   };
 
   const token = OpenRailsSDK.serializePayload(billingMemo);
-  console.log("\n[MERCHANT] RailsFlow billing token:\n", token);
+  if (PRINT_TOKENS) {
+    console.log("\n[MERCHANT] RailsFlow billing token:\n", token);
+  } else {
+    console.log("\n[MERCHANT] RailsFlow billing token prepared (hidden; set OPENRAILS_PRINT_TOKENS=1 to print).");
+  }
 
   // --- Step 2: Payer receives and validates token ---
   const parsed = OpenRailsSDK.deserializePayload(token) as RailsFlowPayload;
@@ -115,10 +166,11 @@ async function main() {
   const mintResult = await client.signAndExecuteTransaction({
     signer: payerKeypair,
     transaction: mintTx,
-    options: { showObjectChanges: true },
+    options: TX_OPTIONS,
   });
 
-  console.log("\n[PAYER] Mint TX digest:", mintResult.digest);
+  console.log("\n[PAYER] Paycard minted");
+  logTx("[PAYER] Mint TX", mintResult.digest);
 
   const paycardObj = mintResult.objectChanges?.find(
     (c) => c.type === "created" && (c as { objectType?: string }).objectType?.includes("Paycard")
@@ -132,7 +184,7 @@ async function main() {
   console.log("[PAYER] Paycard funded:", paycardObj.objectId);
 
   // --- Step 4: Merchant claims settlement ---
-  // (In production: merchant calls this after some time has elapsed)
+  // The payer sponsors this claim by default when the merchant wallet is ephemeral or unfunded.
   console.log("\n[MERCHANT] Claiming settlement...");
 
   const claimTx = buildClaimPTB({
@@ -141,12 +193,20 @@ async function main() {
     typeArgument: COIN_TYPES.SUI,
   });
 
-  const claimResult = await client.signAndExecuteTransaction({
-    signer: merchantKeypair,
-    transaction: claimTx,
-  });
+  const claimResult = sponsorMerchantClaim
+    ? await (async () => {
+        const txBytes = await prepareForSponsorship(claimTx, merchantAddress, payerAddress, client);
+        const { signature: userSig } = await merchantKeypair.signTransaction(txBytes);
+        const sponsored = await executeSponsoredTx(txBytes, userSig, payerKeypair, client);
+        return await client.waitForTransaction({ digest: sponsored.digest, options: TX_OPTIONS });
+      })()
+    : await client.signAndExecuteTransaction({
+        signer: merchantKeypair,
+        transaction: claimTx,
+        options: TX_OPTIONS,
+      });
 
-  console.log("[MERCHANT] Settlement claimed, TX:", claimResult.digest);
+  logTx("[MERCHANT] Settlement claimed, TX", claimResult.digest);
 }
 
 main().catch(console.error);

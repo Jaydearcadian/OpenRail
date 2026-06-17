@@ -229,18 +229,36 @@ npm run build
 
 ### Deploy to testnet
 ```bash
-cd move
+cd sdk
+npm run testnet:preflight
+
+cd ../move
 sui client publish --gas-budget 100000000
-# Copy the published package ID into examples/*.ts and sdk/src/network.ts
 ```
 
 ### Run examples
 ```bash
-cd sdk
+export PAYER_PRIVATE_KEY="<exportedPrivateKey from sui keytool export>"
+export PACKAGE_ID="0x<PackageID from publish output>"
+export PAYER_COIN_OBJECT_ID="0x<payer SUI coin object for vault allocation>"
+export PAYER_GAS_COIN_OBJECT_ID="0x<second payer SUI coin object for RailsCard gas reserve>"
+export FUNDING_COIN_OBJECT_ID="0x<payer SUI coin object for RailsFlow funding>"
+# Optional funded-wallet proof runs:
+# export RECIPIENT_PRIVATE_KEY="<funded recipient exportedPrivateKey>"
+# export MERCHANT_PRIVATE_KEY="<funded merchant exportedPrivateKey>"
+
+cd ../sdk
 npx ts-node --esm --project tsconfig.json ../examples/railscard-demo.ts
 npx ts-node --esm --project tsconfig.json ../examples/railsflow-demo.ts
 npx ts-node --esm --project tsconfig.json ../examples/gateway-demo.ts
 ```
+
+RailsCard sponsors `unseal_and_mint` for an ephemeral or unfunded recipient by
+default. RailsFlow sponsors the merchant claim for an ephemeral or unfunded
+merchant by default. Demo transactions print digests and testnet explorer URLs
+for proof artifacts. Bearer tokens are hidden by default; set
+`OPENRAILS_PRINT_TOKENS=1` only in a private terminal when you need to inspect
+raw tokens.
 
 ---
 

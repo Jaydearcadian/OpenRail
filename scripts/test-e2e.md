@@ -56,6 +56,15 @@ Expected output: 3 heartbeats received by local merchant server, all signatures 
 
 ## Tier 4: Sui testnet (requires sui CLI + funded wallet)
 
+### Read-only preflight
+```bash
+cd sdk
+npm run testnet:preflight
+```
+
+The preflight checks local CLI/build/env readiness without publishing, writing `.env`,
+or printing private keys. It also prints the exact proof commands below.
+
 ### Install sui CLI
 ```bash
 curl -fsSL https://raw.githubusercontent.com/MystenLabs/suiup/refs/heads/main/install.sh | bash
@@ -83,47 +92,85 @@ Test result: OK. Total tests: 16; passed: 16; failed: 0
 
 ### Deploy to testnet
 ```bash
+sui client switch --env testnet
 sui client publish --gas-budget 100000000
 ```
-Copy the `PackageID` from the output. It looks like `0x...` (64 hex chars).
+Copy the `PackageID` from the output. It looks like `0x...`.
 
-### Update examples with your package ID
-Edit `examples/railscard-demo.ts` and `examples/railsflow-demo.ts`:
-```typescript
-const PACKAGE_ID = "0x<your-deployed-package-id>";
-```
+### Export proof env vars
+Keep secrets in shell env vars only. Do not edit demo constants and do not write `.env`.
 
-Also update the coin object IDs for your wallet:
 ```bash
-sui client objects          # find a SUI coin object
-sui client object <coin-id> # check its value
+export PAYER_PRIVATE_KEY='<exportedPrivateKey from sui keytool export>'
+export PACKAGE_ID='0x<PackageID from publish output>'
+export PAYER_COIN_OBJECT_ID='0x<payer SUI coin object for vault allocation>'
+export PAYER_GAS_COIN_OBJECT_ID='0x<second payer SUI coin object for RailsCard gas reserve>'
+export FUNDING_COIN_OBJECT_ID='0x<payer SUI coin object for RailsFlow funding>'
 ```
+
+Find coin object IDs with:
+```bash
+sui client objects          # find SUI coin objects
+sui client object <coin-id> # check value
+```
+
+Optional funded-wallet proof runs:
+```bash
+export RECIPIENT_PRIVATE_KEY='<funded recipient exportedPrivateKey>'
+export MERCHANT_PRIVATE_KEY='<funded merchant exportedPrivateKey>'
+```
+
+Without those optional keys, RailsCard uses an ephemeral recipient and the payer
+sponsors `unseal_and_mint`; RailsFlow uses an ephemeral merchant and the payer
+sponsors the merchant claim. If an optional wallet is provided but unfunded, the
+payer sponsors that demo transaction as well.
+
+Bearer tokens are hidden by default to avoid leaking spendable or metadata-rich
+payloads into logs. Set `OPENRAILS_PRINT_TOKENS=1` only in a private terminal
+when you need to inspect raw tokens.
 
 ### Run RailsCard demo (outbound grant via SealedVault)
 ```bash
-cd sdk && npx ts-node --esm ../examples/railscard-demo.ts
+cd sdk && npx ts-node --esm --project tsconfig.json ../examples/railscard-demo.ts
 ```
 
 Expected:
-- `[PAYER] Vault created, TX: <digest>`
-- `[RECIPIENT] Vault unsealed, TX: <digest>`
+- `[PAYER] Vault created`
+- `[RECIPIENT] Vault unsealed`
 - `[RECIPIENT] Claim TX: <digest>`
+- RailsCard waits briefly after unseal so at least one second can accrue before claim
+- Explorer URLs printed for proof transactions
 - SettlementClaimed event visible in Sui explorer
 
 ### Run RailsFlow demo (inbound billing memo)
 ```bash
-npx ts-node --esm ../examples/railsflow-demo.ts
+cd sdk && npx ts-node --esm --project tsconfig.json ../examples/railsflow-demo.ts
 ```
 
 Expected:
-- `[MERCHANT] RailsFlow token: ...`
-- `[PAYER] Minting channel, TX: <digest>`
-- `[MERCHANT] Claiming settlement, TX: <digest>`
+- `[MERCHANT] RailsFlow billing token prepared`
+- `[PAYER] Mint TX: <digest>`
+- `[MERCHANT] Settlement claimed, TX: <digest>`
+- Explorer URLs printed for proof transactions
 
 ### Verify SettlementReceipt on explorer
-Go to `https://testnet.suivision.xyz/txblock/<digest>` and look for the
-`open_rails::events::SettlementReceipt` event. Check:
+Go to `https://suiexplorer.com/txblock/<digest>?network=testnet` or run:
+
+```bash
+sui client tx-block <digest> --show-events --show-object-changes --show-effects
+```
+
+Look for the `open_rails::events::SettlementReceipt` event. Check:
 - `total_paid_to_recipient + residual_returned_to_payer == initial_allocation`
+
+### Proof artifact checklist
+- Published `PackageID`
+- RailsCard vault creation digest and explorer URL
+- RailsCard sponsored or self-funded unseal digest and explorer URL
+- RailsCard claim digest and explorer URL
+- RailsFlow mint digest and explorer URL
+- RailsFlow sponsored or self-funded merchant claim digest and explorer URL
+- SettlementReceipt event payload or CLI inspection output
 
 ---
 
