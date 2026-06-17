@@ -7,11 +7,11 @@ cd sdk && npm run build
 node scripts/tier1.mjs
 ```
 
-All 43 checks should pass. This verifies: accrual math, envelope serialization,
+All 54 checks should pass. This verifies: accrual math, envelope serialization,
 canonical signing and legacy fallback, short links, network addresses, PTB
 construction, Ed25519 signing, RailsFlow merchant and invoice binding, gateway
-event signatures, gateway store/idempotency behavior, and Walrus BlobID
-conversion.
+event signatures, gateway store/idempotency behavior, encrypted Walrus links,
+and Walrus BlobID conversion.
 
 ---
 
@@ -19,7 +19,7 @@ conversion.
 
 ```bash
 cd sdk && node --input-type=module <<'EOF'
-import { uploadEnvelope, fetchEnvelope, buildShortLink, WALRUS_ENDPOINTS } from './dist/index.js';
+import { uploadEncryptedEnvelope, fetchEncryptedEnvelope, WALRUS_ENDPOINTS } from './dist/index.js';
 
 const payload = {
   linkType: 'railscard',
@@ -34,12 +34,12 @@ const payload = {
   },
 };
 
-const { blobId, shortLink } = await uploadEnvelope(
+const { blobId, shortLink, decryptionKey } = await uploadEncryptedEnvelope(
   payload, WALRUS_ENDPOINTS.testnet.publisher, { epochs: 1 }
 );
-console.log('Short link:', shortLink);
+console.log('Encrypted short link prepared:', shortLink.split('#')[0] + '#k=<hidden>');
 
-const resolved = await fetchEnvelope(blobId, WALRUS_ENDPOINTS.testnet.aggregator);
+const resolved = await fetchEncryptedEnvelope(blobId, WALRUS_ENDPOINTS.testnet.aggregator, decryptionKey);
 console.log('Round-trip OK:', resolved.linkType === 'railscard');
 EOF
 ```

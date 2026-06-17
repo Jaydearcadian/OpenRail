@@ -2,6 +2,7 @@ export * from "./types.js";
 export * from "./sdk.js";
 export * from "./signer.js";
 export * from "./canonical.js";
+export * from "./link-encryption.js";
 export * from "./walrus.js";
 export * from "./ptb.js";
 export * from "./network.js";

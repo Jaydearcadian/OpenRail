@@ -26,9 +26,9 @@ import {
   buildClaimPTB,
   prepareForSponsorship,
   executeSponsoredTx,
-  uploadEnvelope,
-  fetchEnvelope,
-  buildShortLink,
+  uploadEncryptedEnvelope,
+  fetchEncryptedEnvelope,
+  buildEncryptedShortLink,
   NETWORKS,
   WALRUS_ENDPOINTS,
   COIN_TYPES,
@@ -203,13 +203,13 @@ async function main() {
   }
   console.log("[PAYER] → token + vaultObjectId passed to recipient out-of-band");
 
-  // --- Step 2b (optional): Publish envelope to Walrus — short link replaces the Base64 token ---
+  // --- Step 2b (optional): Publish encrypted envelope to Walrus ---
   //
-  // Instead of sharing the raw Base64 token, the payer can upload the envelope to Walrus
-  // and share a compact rails.to/v1/{blobId} short link. The recipient fetches the envelope
-  // gaslessly from a Walrus aggregator over plain HTTP — no Sui RPC, no gas.
+  // Instead of sharing the raw Base64 token, the payer can upload an AES-GCM encrypted
+  // envelope to Walrus and share a compact rails.to/v1/{blobId}#k=... short link.
+  // The fragment key is not sent to the resolver or Walrus aggregator during HTTP fetches.
   //
-  // epochs=1: blob auto-purges after one Walrus epoch (short-lived — matches link lifetime).
+  // epochs=1: blob auto-purges after one Walrus epoch, matching short-lived link lifetime.
   // Uncomment to run against live Walrus testnet:
   //
   // const payload: RailsCardPayload = {
@@ -220,20 +220,25 @@ async function main() {
   //   intent,
   //   recipientAddress: undefined,
   // };
-  // const { blobId, shortLink } = await uploadEnvelope(
+  // const { blobId, shortLink, decryptionKey } = await uploadEncryptedEnvelope(
   //   payload,
   //   WALRUS_ENDPOINTS.testnet.publisher,
   //   { epochs: 1 }
   // );
-  // console.log("\n[PAYER]  Short link:", shortLink);
+  // if (PRINT_TOKENS) {
+  //   console.log("\n[PAYER]  Encrypted short link:\n", shortLink);
+  // } else {
+  //   console.log("\n[PAYER]  Encrypted short link prepared (hidden; set OPENRAILS_PRINT_TOKENS=1 to print).");
+  // }
   //
   // // Recipient resolves the short link (gasless aggregator GET):
-  // const resolvedPayload = await fetchEnvelope(blobId, WALRUS_ENDPOINTS.testnet.aggregator);
+  // const resolvedPayload = await fetchEncryptedEnvelope(blobId, WALRUS_ENDPOINTS.testnet.aggregator, decryptionKey);
   // console.log("[RECIPIENT] Resolved linkType:", resolvedPayload.linkType);
   //
   // Offline sanity check — pure function, no network:
   const offlineBlobId = "0x" + "ab".repeat(32);
-  console.log("\n[DEMO]   Short link format check:", buildShortLink(offlineBlobId));
+  const offlineKey = "A".repeat(43);
+  console.log("\n[DEMO]   Encrypted short link format check:", buildEncryptedShortLink(offlineBlobId, offlineKey));
 
   // --- Step 3: Recipient receives token, calls unseal_and_mint ---
   // (In production: recipient decodes token, fetches vault, submits their own address)

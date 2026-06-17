@@ -1,5 +1,15 @@
 import { Buffer } from "buffer";
-import type { WalrusMetadataV1, WalrusStorageOptions, OpenRailsLink } from "./types.js";
+import type {
+  EncryptedOpenRailsLinkBlobV1,
+  WalrusMetadataV1,
+  WalrusStorageOptions,
+  OpenRailsLink,
+} from "./types.js";
+import {
+  buildEncryptedShortLink,
+  decryptOpenRailsLink,
+  encryptOpenRailsLink,
+} from "./link-encryption.js";
 
 export interface WalrusUploadResult {
   blobId: string;       // 32-byte hex string
@@ -120,6 +130,26 @@ export async function uploadEnvelope(
 }
 
 /**
+ * Uploads an encrypted Permission Envelope to Walrus. The returned short link
+ * carries the random AES-GCM key in the URL fragment, which is not sent to
+ * resolvers or Walrus aggregators during HTTP requests.
+ */
+export async function uploadEncryptedEnvelope(
+  payload: OpenRailsLink,
+  publisherUrl: string,
+  opts?: WalrusStorageOptions
+): Promise<WalrusUploadResult & { shortLink: string; decryptionKey: string }> {
+  const { blob, decryptionKey } = await encryptOpenRailsLink(payload);
+  const bytes = new TextEncoder().encode(JSON.stringify(blob));
+  const result = await putBlob(buildUploadUrl(publisherUrl, opts), bytes);
+  return {
+    ...result,
+    decryptionKey,
+    shortLink: buildEncryptedShortLink(result.blobId, decryptionKey),
+  };
+}
+
+/**
  * Fetches a Permission Envelope by BlobID from a Walrus aggregator (zero gas).
  * Validates the returned JSON has the required envelope and intent fields.
  */
@@ -136,6 +166,22 @@ export async function fetchEnvelope(
     throw new Error("Walrus blob is not a valid OpenRails Permission Envelope.");
   }
   return parsed;
+}
+
+/**
+ * Fetches and decrypts an encrypted Permission Envelope by BlobID.
+ */
+export async function fetchEncryptedEnvelope(
+  blobId: string,
+  aggregatorUrl: string,
+  decryptionKey: string
+): Promise<OpenRailsLink> {
+  const response = await fetch(`${aggregatorUrl}/v1/blobs/${blobId}`);
+  if (!response.ok) {
+    throw new Error(`Walrus fetch failed (${response.status}) for blob ${blobId}`);
+  }
+  const parsed = JSON.parse(await response.text()) as EncryptedOpenRailsLinkBlobV1;
+  return decryptOpenRailsLink(parsed, decryptionKey);
 }
 
 /**

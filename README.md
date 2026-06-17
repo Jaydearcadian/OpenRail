@@ -154,6 +154,8 @@ Gateway costs **zero gas** because it reads state and projects math off-chain. O
 ### Walrus
 Enterprise agreements carry heavy compliance metadata — multi-sig rules, IP whitelists, vendor API keys, split configurations. OpenRails pushes this to Walrus and anchors only the 32-byte BlobID inside the channel struct. On-chain storage stays minimal; off-chain rules stay verifiably immutable.
 
+Permission Envelopes can also be uploaded as encrypted Walrus blobs. `uploadEncryptedEnvelope()` wraps the signed payload in AES-256-GCM, stores only ciphertext on Walrus, and returns a `rails.to/v1/{blobId}#k=...` link whose fragment key is not sent to resolvers or aggregators during HTTP requests.
+
 ### DeepBook V3
 Settlement claims can route through DeepBook's pool inside the same Programmable Transaction Block. A merchant invoicing in SUI can receive a USDC stream — the swap happens atomically at claim time:
 
@@ -192,9 +194,10 @@ sdk/
     types.ts      — all interfaces: intent, envelope, link types, PTB params, SettlementReceiptV1
     sdk.ts        — OpenRailsSDK.serializePayload / deserializePayload
     canonical.ts  - deterministic canonical JSON bytes and domain separation
+    link-encryption.ts - AES-GCM encrypted link helpers and fragment-key URLs
     signer.ts     - signEnvelope*, verifyEnvelope, RailsFlow merchant and invoice binding
     vault.ts      — buildVaultMessage, signVaultEd25519, signVaultSecp256k1
-    walrus.ts     — upload/fetch helpers, BlobID conversion, WALRUS_ENDPOINTS
+    walrus.ts     — plaintext and encrypted upload/fetch helpers, BlobID conversion, WALRUS_ENDPOINTS
     ptb.ts        — PTB builders for all on-chain operations
     network.ts    — NETWORKS constants, COIN_TYPES
     sponsor.ts    — prepareForSponsorship, executeSponsoredTx
@@ -279,6 +282,7 @@ raw tokens.
 | Gas-reserve tampering | `gas_amount` included in signed vault message — any mismatch fails sig verify |
 | Vault cancel by stranger | `cancel_vault` asserts `sender == vault.payer` |
 | Payload tampering (RailsFlow) | Off-chain signature over intent plus merchant address; payer verifies before funding |
+| Walrus link disclosure | Optional AES-GCM encrypted blobs keep envelope contents off public Walrus; fragment key stays client-side |
 | Timestamp manipulation | Clock fed from Sui's trusted shared Clock object (`0x6`) |
 
 ---

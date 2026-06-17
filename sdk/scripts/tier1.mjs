@@ -12,6 +12,13 @@ import {
   verifyEnvelope,
   canonicalJson,
   canonicalEnvelopeBytes,
+  encryptOpenRailsLink,
+  decryptOpenRailsLink,
+  generateEncryptedLinkKey,
+  buildEncryptedShortLink,
+  parseEncryptedShortLink,
+  uploadEncryptedEnvelope,
+  fetchEncryptedEnvelope,
   buildHeartbeat,
   verifyGatewayEvent,
   InMemoryGatewayStore,
@@ -469,14 +476,144 @@ check('gateway scheduler recovers after store save failure',
   rpcCallsAfterStoreFailure > 1
 );
 
+// ── Encrypted Walrus links ───────────────────────────────────────────────────
+console.log('\nEncrypted Walrus links');
+
+const encryptedPayload = {
+  ...flowPayload,
+  envelope: merchantEnvelope,
+};
+const { blob: encryptedBlob, decryptionKey } = await encryptOpenRailsLink(encryptedPayload);
+const decryptedPayload = await decryptOpenRailsLink(encryptedBlob, decryptionKey);
+const encryptedBlobText = JSON.stringify(encryptedBlob);
+
+// 42
+check('encrypted link round-trips OpenRails payload',
+  decryptedPayload.linkType === 'railsflow' &&
+  decryptedPayload.intent.paycardId === flowPayload.intent.paycardId &&
+  decryptedPayload.merchantAddress === flowPayload.merchantAddress
+);
+// 43
+check('encrypted blob hides plaintext envelope fields',
+  !encryptedBlobText.includes('payerPublicKey') &&
+  !encryptedBlobText.includes(flowPayload.intent.paycardId) &&
+  !encryptedBlobText.includes(flowPayload.merchantAddress)
+);
+// 44
+check('encrypted link rejects wrong key',
+  await (async () => {
+    try {
+      await decryptOpenRailsLink(encryptedBlob, generateEncryptedLinkKey());
+      return false;
+    } catch {
+      return true;
+    }
+  })()
+);
+// 45
+check('encrypted link rejects tampered ciphertext',
+  await (async () => {
+    try {
+      await decryptOpenRailsLink({
+        ...encryptedBlob,
+        ciphertext: `${encryptedBlob.ciphertext.startsWith('A') ? 'B' : 'A'}${encryptedBlob.ciphertext.slice(1)}`,
+      }, decryptionKey);
+      return false;
+    } catch {
+      return true;
+    }
+  })()
+);
+// 46
+check('encrypted link rejects tampered authenticated header',
+  await (async () => {
+    try {
+      await decryptOpenRailsLink({ ...encryptedBlob, plaintextType: 'openrails.link.v2' }, decryptionKey);
+      return false;
+    } catch {
+      return true;
+    }
+  })()
+);
+// 47
+check('encrypted link rejects malformed IV length',
+  await (async () => {
+    try {
+      await decryptOpenRailsLink({ ...encryptedBlob, iv: 'AA' }, decryptionKey);
+      return false;
+    } catch {
+      return true;
+    }
+  })()
+);
+// 48
+check('encrypted link rejects unknown blob fields',
+  await (async () => {
+    try {
+      await decryptOpenRailsLink({ ...encryptedBlob, unexpected: 'field' }, decryptionKey);
+      return false;
+    } catch {
+      return true;
+    }
+  })()
+);
+
+const encryptedShortLink = buildEncryptedShortLink('0x' + 'cd'.repeat(32), decryptionKey, 'https://rails.to/v1');
+const parsedEncryptedShortLink = parseEncryptedShortLink(encryptedShortLink);
+
+// 49
+check('encrypted short link keeps key in URL fragment',
+  encryptedShortLink.includes('#k=') &&
+  parsedEncryptedShortLink.blobId === '0x' + 'cd'.repeat(32) &&
+  parsedEncryptedShortLink.decryptionKey === decryptionKey
+);
+// 50
+check('encrypted short link fetch URL excludes fragment key',
+  !parsedEncryptedShortLink.fetchUrl.includes('#') &&
+  !parsedEncryptedShortLink.fetchUrl.includes(decryptionKey)
+);
+
+let uploadedEncryptedBlobText = '';
+globalThis.fetch = async (url, init = {}) => {
+  if (String(url).includes('publisher.test')) {
+    uploadedEncryptedBlobText = new TextDecoder().decode(init.body);
+    return new Response(JSON.stringify({
+      newlyCreated: { blobObject: { blobId: '0x' + 'ef'.repeat(32), id: '0xblob' } },
+    }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+  }
+  return new Response(uploadedEncryptedBlobText, {
+    status: 200,
+    headers: { 'Content-Type': 'application/json' },
+  });
+};
+const encryptedUpload = await uploadEncryptedEnvelope(flowPayload, 'https://publisher.test', { epochs: 1 });
+const fetchedEncryptedPayload = await fetchEncryptedEnvelope(
+  encryptedUpload.blobId,
+  'https://aggregator.test',
+  encryptedUpload.decryptionKey
+);
+globalThis.fetch = originalFetch;
+
+// 51
+check('uploadEncryptedEnvelope stores encrypted Walrus blob',
+  encryptedUpload.shortLink.includes('#k=') &&
+  uploadedEncryptedBlobText.includes('openrails.encrypted-link') &&
+  !uploadedEncryptedBlobText.includes(flowPayload.merchantAddress)
+);
+// 52
+check('fetchEncryptedEnvelope decrypts Walrus blob',
+  fetchedEncryptedPayload.linkType === 'railsflow' &&
+  fetchedEncryptedPayload.merchantAddress === flowPayload.merchantAddress
+);
+
 // ── Walrus BlobID conversion ─────────────────────────────────────────────────
 console.log('\nWalrus BlobID conversion');
 
-// 42
+// 53
 check('hex Walrus BlobID converts to 32 bytes',
   walrusBlobIdToBytes('0x' + 'ab'.repeat(32)).length === 32
 );
-// 43
+// 54
 check('invalid Walrus BlobID length is rejected',
   (() => {
     try {

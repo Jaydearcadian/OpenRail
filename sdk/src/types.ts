@@ -53,6 +53,18 @@ export interface RailsFlowPayload extends OpenRailsPayloadV1 {
 
 export type OpenRailsLink = RailsCardPayload | RailsFlowPayload;
 
+// --- Encrypted Links ---
+
+export interface EncryptedOpenRailsLinkBlobV1 {
+  schemaVersion: "1";
+  kind: "openrails.encrypted-link";
+  plaintextType: "openrails.link.v1";
+  alg: "AES-256-GCM";
+  keyMode: "fragment-key";
+  iv: string;          // base64url 12-byte AES-GCM nonce
+  ciphertext: string;  // base64url encrypted OpenRailsLink JSON plus GCM tag
+}
+
 // --- Walrus Storage Options ---
 
 export interface WalrusStorageOptions {
