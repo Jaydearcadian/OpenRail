@@ -157,7 +157,7 @@ Expected:
 Go to `https://suiexplorer.com/txblock/<digest>?network=testnet` or run:
 
 ```bash
-sui client tx-block <digest> --show-events --show-object-changes --show-effects
+sui client tx-block <digest> --json
 ```
 
 Look for the `open_rails::events::SettlementReceipt` event. Check:
@@ -171,6 +171,32 @@ Look for the `open_rails::events::SettlementReceipt` event. Check:
 - RailsFlow mint digest and explorer URL
 - RailsFlow sponsored or self-funded merchant claim digest and explorer URL
 - SettlementReceipt event payload or CLI inspection output
+
+### Verified live testnet proof, 2026-06-17
+
+Published package:
+```text
+0xfaf26d6a2028446fa61f4171c27f26209dc7951ea8634dc8ce88e1fa125dacf1
+```
+
+Proof transactions:
+
+| Step | Digest |
+|---|---|
+| Publish package | `BAxLBDFWsyghp33CZBDmZNXsmiZQKuFBoqhNqP9aBGCU` |
+| RailsCard vault create | `4tbTxaW4ArahKjuqPYjhXkFc1NEgdEeMDPT5kuniAbdq` |
+| RailsCard sponsored unseal | `BEeGQPpo8udizbs9uV4VfcMmNjxeJJGQgZQH2bvh3kJd` |
+| RailsCard recipient claim | `FAnHgXGwe8PcWyG2oFSJ9GdfnFfch6A2X4asVmcQsFKH` |
+| RailsFlow mint | `BT9WmKPohTfK5oGt3RvyPRuJfHeysPuXcRU8vh5m4ANe` |
+| RailsFlow sponsored merchant claim | `GMLyfutGD7U7EdqNwUCdfGZjCN3Xc9nwEyj5qw2G4YNQ` |
+
+Verified events:
+- `VaultSealed`
+- `PaycardMinted`
+- `VaultUnsealed`
+- `SettlementClaimed` for RailsCard
+- `PaycardMinted` for RailsFlow
+- `SettlementClaimed` for RailsFlow
 
 ---
 
