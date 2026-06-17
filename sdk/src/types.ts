@@ -9,6 +9,7 @@ export interface SuiAssetConfig {
 // --- Intent & Envelope ---
 
 export interface OpenRailsIntentV1 {
+  schemaVersion?: "1";
   paycardId: string;              // 32-byte unique hex identifier (client-generated before mint)
   asset: SuiAssetConfig;
   allocationPoolSize: string;     // Absolute token units including safety buffer
@@ -20,13 +21,15 @@ export interface OpenRailsIntentV1 {
 }
 
 export interface CryptographicEnvelopeV1 {
+  schemaVersion?: "1";
   payerPublicKey: string;         // Hex-encoded public key
   nonce: number;
-  signature: string;              // Hex-encoded signature over JSON(intent + nonce)
+  signature: string;              // Hex-encoded signature over canonical intent + nonce
   curve: "ed25519" | "secp256k1";
 }
 
 export interface OpenRailsPayloadV1 {
+  schemaVersion?: "1";
   envelope: CryptographicEnvelopeV1;
   intent: OpenRailsIntentV1;
 }
@@ -45,7 +48,7 @@ export interface RailsCardPayload extends OpenRailsPayloadV1 {
 export interface RailsFlowPayload extends OpenRailsPayloadV1 {
   linkType: "railsflow";
   merchantAddress: string;        // Hardcoded; cannot be altered by payer
-  invoiceDescription?: string;
+  invoiceDescription?: string;    // Signed invoice metadata when present
 }
 
 export type OpenRailsLink = RailsCardPayload | RailsFlowPayload;

@@ -1,8 +1,24 @@
 import { SuiClient } from "@mysten/sui/client";
 import type { EventId } from "@mysten/sui/client";
-import { Ed25519Keypair } from "@mysten/sui/keypairs/ed25519";
 import type { StreamState } from "./accrual.js";
-import { buildBufferLowEvent, buildHeartbeat, buildTerminalEvent } from "./heartbeat.js";
+import {
+  buildBufferLowEvent,
+  buildHeartbeat,
+  buildTerminalEvent,
+  type GatewayEventSigner,
+  type SignedGatewayEvent,
+} from "./heartbeat.js";
+import {
+  FileGatewayStore,
+  InMemoryGatewayStore,
+  type GatewayPersistedState,
+  type GatewayStore,
+  type PendingGatewayDelivery,
+} from "./gateway-store.js";
+
+export interface GatewaySigner extends GatewayEventSigner {
+  getPublicKey(): { toRawBytes(): Uint8Array };
+}
 
 export interface GatewayConfig {
   suiRpcUrl: string;
@@ -11,7 +27,9 @@ export interface GatewayConfig {
   webhookUrl: string;
   intervalMs?: number;           // Default: 10_000ms
   bufferLowThreshold?: bigint | string;
-  signerKeypair: Ed25519Keypair;
+  signerKeypair: GatewaySigner;
+  store?: GatewayStore;
+  storePath?: string;
 }
 
 export interface GatewayHandle {
@@ -48,12 +66,17 @@ function hydrateStreamState(paycardId: string, fields: Record<string, any>): Str
 
 // --- Webhook dispatch ---
 
-async function dispatch(webhookUrl: string, payload: unknown, attempts = 3): Promise<boolean> {
+async function dispatch(webhookUrl: string, payload: SignedGatewayEvent, attempts = 3): Promise<boolean> {
   for (let attempt = 1; attempt <= attempts; attempt++) {
     try {
       const response = await fetch(webhookUrl, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          "Idempotency-Key": payload.eventId,
+          "X-OpenRails-Event-Id": payload.eventId,
+          "X-OpenRails-Schema-Version": payload.schemaVersion,
+        },
         body: JSON.stringify(payload),
       });
       if (response.ok) return true;
@@ -68,6 +91,17 @@ async function dispatch(webhookUrl: string, payload: unknown, attempts = 3): Pro
   return false;
 }
 
+function nextBackoffMs(attempts: number): number {
+  return Math.min(30_000, 500 * 2 ** Math.min(attempts, 6));
+}
+
+function mergeInitialWatchlist(state: GatewayPersistedState, paycardIds: string[]): GatewayPersistedState {
+  return {
+    ...state,
+    watchlist: [...new Set([...state.watchlist, ...paycardIds])],
+  };
+}
+
 // --- Main ---
 
 /**
@@ -80,9 +114,9 @@ async function dispatch(webhookUrl: string, payload: unknown, attempts = 3): Pro
  *   4. POSTs the signed payload to webhookUrl
  *
  * On detecting a SettlementReceipt event for a watched Paycard,
- * the gateway emits a final heartbeat (isExhausted=true) and removes
- * that Paycard from the watch list. When all Paycards are settled,
- * the gateway stops automatically.
+ * the gateway emits a signed terminal event and removes that Paycard
+ * from the watch list only after delivery succeeds. When all Paycards
+ * are settled and pending deliveries are empty, the gateway stops automatically.
  */
 export async function startGateway(config: GatewayConfig): Promise<GatewayHandle> {
   const { suiRpcUrl, packageId, webhookUrl, signerKeypair } = config;
@@ -93,99 +127,189 @@ export async function startGateway(config: GatewayConfig): Promise<GatewayHandle
 
   const client = new SuiClient({ url: suiRpcUrl });
   const publicKeyHex = Buffer.from(signerKeypair.getPublicKey().toRawBytes()).toString("hex");
+  const store = config.store ?? (
+    config.storePath ? new FileGatewayStore(config.storePath) : new InMemoryGatewayStore()
+  );
 
-  // Mutable watch list — paycards are removed when they reach terminal state
-  const watching = new Set<string>(config.paycardIds);
+  let persisted = mergeInitialWatchlist(await store.load(), config.paycardIds);
 
-  let eventCursor: EventId | null = null;
-  let sequence = 0;
+  // Mutable watch list. Paycards are removed only after terminal delivery succeeds.
+  const watching = new Set<string>(persisted.watchlist);
+  let eventCursor: EventId | null = persisted.cursor;
+  let pendingDeliveries: PendingGatewayDelivery[] = [...persisted.pendingDeliveries];
+  const sentEventIds = new Set<string>(persisted.sentEventIds);
+  let sequence = persisted.sequence;
 
   let stopped = false;
+  let ticking = false;
+
+  async function saveState(): Promise<void> {
+    persisted = {
+      watchlist: [...watching],
+      cursor: eventCursor,
+      pendingDeliveries,
+      sentEventIds: [...sentEventIds],
+      sequence,
+    };
+    await store.save(persisted);
+  }
+
+  async function markDelivered(event: SignedGatewayEvent): Promise<void> {
+    sentEventIds.add(event.eventId);
+    pendingDeliveries = pendingDeliveries.filter((delivery) => delivery.eventId !== event.eventId);
+    if (event.eventType === "channel.terminated") {
+      watching.delete(event.paycardId);
+    }
+    await saveState();
+  }
+
+  async function enqueueAndDispatch(event: SignedGatewayEvent): Promise<boolean> {
+    if (sentEventIds.has(event.eventId)) {
+      if (event.eventType === "channel.terminated") {
+        watching.delete(event.paycardId);
+        await saveState();
+      }
+      return true;
+    }
+
+    const delivered = await dispatch(webhookUrl, event);
+    if (delivered) {
+      await markDelivered(event);
+      return true;
+    }
+
+    if (!pendingDeliveries.some((delivery) => delivery.eventId === event.eventId)) {
+      pendingDeliveries.push({
+        eventId: event.eventId,
+        webhookUrl,
+        payload: event,
+        attempts: 1,
+        nextAttemptAtMs: Date.now() + nextBackoffMs(1),
+      });
+      await saveState();
+    }
+    return false;
+  }
+
+  async function retryPendingDeliveries(): Promise<void> {
+    const nowMs = Date.now();
+    for (const delivery of [...pendingDeliveries]) {
+      if (sentEventIds.has(delivery.eventId)) {
+        pendingDeliveries = pendingDeliveries.filter((item) => item.eventId !== delivery.eventId);
+        continue;
+      }
+      if (delivery.nextAttemptAtMs > nowMs) continue;
+
+      const delivered = await dispatch(delivery.webhookUrl, delivery.payload);
+      if (delivered) {
+        await markDelivered(delivery.payload);
+      } else {
+        pendingDeliveries = pendingDeliveries.map((item) => item.eventId === delivery.eventId
+          ? {
+              ...item,
+              attempts: item.attempts + 1,
+              nextAttemptAtMs: nowMs + nextBackoffMs(item.attempts + 1),
+            }
+          : item);
+        await saveState();
+      }
+    }
+  }
 
   async function tick(): Promise<void> {
-    if (stopped || watching.size === 0) return;
-
-    const nowSec = Math.floor(Date.now() / 1000);
+    if (stopped || ticking) return;
+    if (watching.size === 0 && pendingDeliveries.length === 0) return;
+    ticking = true;
 
     try {
-      const eventsPage = await client.queryEvents({
-        query: {
-          MoveEventType: `${packageId}::events::SettlementReceipt`,
-        },
-        cursor: eventCursor ?? undefined,
-        limit: 50,
-      });
+      const nowSec = Math.floor(Date.now() / 1000);
 
-      for (const ev of eventsPage.data) {
-        eventCursor = ev.id;
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const parsed = ev.parsedJson as Record<string, any> | undefined;
-        if (!parsed) continue;
-        const paycardId = parsed["paycard_id"];
-        if (typeof paycardId === "string" && watching.has(paycardId)) {
-          const terminalEvent = await buildTerminalEvent({
-            paycardId,
-            settlementType: Number(parsed["settlement_type"]),
-            totalPaidToRecipient: String(parsed["total_paid_to_recipient"]),
-            residualReturnedToPayer: String(parsed["residual_returned_to_payer"]),
-            closedAtSeconds: Number(parsed["closed_at_seconds"]),
-          }, nowSec, ++sequence, signerKeypair);
-          await dispatch(webhookUrl, terminalEvent);
-          watching.delete(paycardId);
-        }
-      }
-    } catch {
-      // RPC error, skip event check this tick.
-    }
-
-    for (const paycardId of [...watching]) {
-      if (!watching.has(paycardId)) continue;
-
-      // 2. Fetch object and project accrual
       try {
-        const obj = await client.getObject({
-          id: paycardId,
-          options: { showContent: true },
+        await retryPendingDeliveries();
+
+        const eventsPage = await client.queryEvents({
+          query: {
+            MoveEventType: `${packageId}::events::SettlementReceipt`,
+          },
+          cursor: eventCursor ?? undefined,
+          limit: 50,
         });
 
-        const content = obj.data?.content;
-        if (!content || content.dataType !== "moveObject") continue;
-
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const fields = (content as any).fields as Record<string, any>;
-        const state = hydrateStreamState(paycardId, fields);
-
-        // 3. Build signed heartbeat
-        const heartbeat = await buildHeartbeat(state, nowSec, signerKeypair, ++sequence);
-
-        // 4. Dispatch
-        await dispatch(webhookUrl, heartbeat);
-
-        if (
-          bufferLowThreshold !== undefined &&
-          BigInt(heartbeat.projectedBalance) <= bufferLowThreshold
-        ) {
-          const bufferLowEvent = await buildBufferLowEvent(
-            paycardId,
-            BigInt(heartbeat.projectedBalance),
-            bufferLowThreshold,
-            nowSec,
-            ++sequence,
-            signerKeypair
-          );
-          await dispatch(webhookUrl, bufferLowEvent);
+        for (const ev of eventsPage.data) {
+          eventCursor = ev.id;
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const parsed = ev.parsedJson as Record<string, any> | undefined;
+          if (!parsed) continue;
+          const paycardId = parsed["paycard_id"];
+          if (typeof paycardId === "string" && watching.has(paycardId)) {
+            const terminalEvent = await buildTerminalEvent({
+              eventId: `channel.terminated:${ev.id.txDigest}:${ev.id.eventSeq}`,
+              paycardId,
+              settlementType: Number(parsed["settlement_type"]),
+              totalPaidToRecipient: String(parsed["total_paid_to_recipient"]),
+              residualReturnedToPayer: String(parsed["residual_returned_to_payer"]),
+              closedAtSeconds: Number(parsed["closed_at_seconds"]),
+              transactionDigest: ev.id.txDigest,
+            }, nowSec, ++sequence, signerKeypair);
+            await enqueueAndDispatch(terminalEvent);
+          }
         }
-
-        if (state.status === "depleted") {
-          watching.delete(paycardId);
-        }
+        await saveState();
       } catch {
-        // Object fetch error — skip this Paycard this tick
+        // RPC or persistence error, skip event check this tick.
       }
-    }
 
-    if (watching.size === 0) {
-      stopped = true;
+      for (const paycardId of [...watching]) {
+        if (!watching.has(paycardId)) continue;
+
+        // 2. Fetch object and project accrual
+        try {
+          const obj = await client.getObject({
+            id: paycardId,
+            options: { showContent: true },
+          });
+
+          const content = obj.data?.content;
+          if (!content || content.dataType !== "moveObject") continue;
+
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const fields = (content as any).fields as Record<string, any>;
+          const state = hydrateStreamState(paycardId, fields);
+
+          // 3. Build signed heartbeat
+          const heartbeat = await buildHeartbeat(state, nowSec, signerKeypair, ++sequence);
+
+          // 4. Dispatch
+          await enqueueAndDispatch(heartbeat);
+
+          if (
+            bufferLowThreshold !== undefined &&
+            BigInt(heartbeat.projectedBalance) <= bufferLowThreshold
+          ) {
+            const bufferLowEvent = await buildBufferLowEvent(
+              paycardId,
+              BigInt(heartbeat.projectedBalance),
+              bufferLowThreshold,
+              nowSec,
+              ++sequence,
+              signerKeypair
+            );
+            await enqueueAndDispatch(bufferLowEvent);
+          }
+        } catch {
+          // Object fetch or persistence error, skip this Paycard this tick
+        }
+      }
+
+      await saveState();
+
+      if (watching.size === 0 && pendingDeliveries.length === 0) {
+        stopped = true;
+      }
+    } catch {
+      // Keep the gateway scheduler alive after unexpected persistence or dispatch failures.
+    } finally {
+      ticking = false;
     }
   }
 

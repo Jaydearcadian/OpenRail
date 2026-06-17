@@ -1,6 +1,7 @@
 export * from "./types.js";
 export * from "./sdk.js";
 export * from "./signer.js";
+export * from "./canonical.js";
 export * from "./walrus.js";
 export * from "./ptb.js";
 export * from "./network.js";
@@ -8,5 +9,6 @@ export * from "./sponsor.js";
 export * from "./vault.js";
 export * from "./accrual.js";
 export * from "./heartbeat.js";
+export * from "./gateway-store.js";
 export * from "./gateway.js";
 export * from "./sui.js";

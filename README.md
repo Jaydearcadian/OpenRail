@@ -4,6 +4,8 @@
 
 OpenRails converts financial agreements into stateless, cryptographically signed **Permission Envelopes** that initialize isolated **streaming channels** on Sui. Every channel is a single-writer Owned Object — bypassing global consensus sequencing and enabling AI agent swarms to settle concurrently at sub-second latency.
 
+Permission Envelope signatures now cover canonical, domain-separated JSON bytes with recursive key ordering. Verification checks canonical signatures first and falls back to the legacy JSON form for existing tokens.
+
 ---
 
 ## What Is a Channel?
@@ -110,12 +112,12 @@ Because Sui does not push events to HTTP endpoints, OpenRails ships an off-chain
 [ GATEWAY LOOP — every 10 s ]
   1. Fetch watched channel object via SuiClient.getObject()
   2. Mirror calculate_accrual_debt in TypeScript → project current balance
-  3. Sign StreamHeartbeat with gateway Ed25519 keypair
-  4. POST signed JSON payload to merchant webhook URL
-  5. On SettlementReceipt event → emit signed terminal notification → remove from watch list
+  3. Sign canonical StreamHeartbeat with gateway Ed25519 keypair
+  4. POST signed JSON payload to merchant webhook URL with idempotency headers
+  5. On SettlementReceipt event → emit signed terminal notification → remove from watch list after delivery succeeds
 ```
 
-Merchants receive a standard HTTPS webhook interface over a Sui event stream — no Sui SDK required on their side. Heartbeats, buffer-low alerts, and terminal notifications carry Ed25519 signatures over deterministic JSON; merchants verify with `verifyGatewayEvent(event, gatewayPublicKeyHex)`.
+Merchants receive a standard HTTPS webhook interface over a Sui event stream, no Sui SDK required on their side. Heartbeats, buffer-low alerts, and terminal notifications carry Ed25519 signatures over canonical, domain-separated JSON with `schemaVersion`, `eventId`, `sequence`, `timestamp`, and `paycardId`; merchants verify with `verifyGatewayEvent(event, gatewayPublicKeyHex)`.
 
 Gateway costs **zero gas** because it reads state and projects math off-chain. On-chain gas is still paid by whichever wallet submits mint, claim, expiry, cancel, or unseal transactions.
 
@@ -127,7 +129,7 @@ Gateway costs **zero gas** because it reads state and projects math off-chain. O
 [ OFF-CHAIN ]
   RailsCard: Payer signs SealedVault params → Base64 token
   RailsFlow: Merchant signs invoice → Base64 token
-  Gateway:   accrual.ts mirrors calculate_accrual_debt → StreamHeartbeat → webhook
+  Gateway:   accrual.ts mirrors calculate_accrual_debt → canonical StreamHeartbeat → webhook
 
 [ ON-CHAIN ]
   RailsCard: unseal_and_mint() → ed25519/secp256k1_verify → Channel<T> (owned by recipient)
@@ -189,15 +191,17 @@ sdk/
   src/
     types.ts      — all interfaces: intent, envelope, link types, PTB params, SettlementReceiptV1
     sdk.ts        — OpenRailsSDK.serializePayload / deserializePayload
-    signer.ts     — signEnvelope*, verifyEnvelope, RailsFlow merchant binding
+    canonical.ts  - deterministic canonical JSON bytes and domain separation
+    signer.ts     - signEnvelope*, verifyEnvelope, RailsFlow merchant and invoice binding
     vault.ts      — buildVaultMessage, signVaultEd25519, signVaultSecp256k1
     walrus.ts     — upload/fetch helpers, BlobID conversion, WALRUS_ENDPOINTS
     ptb.ts        — PTB builders for all on-chain operations
     network.ts    — NETWORKS constants, COIN_TYPES
     sponsor.ts    — prepareForSponsorship, executeSponsoredTx
     accrual.ts    — calculateAccrualDebt, projectStreamAt (TypeScript mirror of Move math)
-    heartbeat.ts  — signed heartbeat, buffer-low, terminal event helpers
-    gateway.ts    — startGateway (polling loop, retries, signed terminal detection)
+    heartbeat.ts  - canonical signed heartbeat, buffer-low, terminal event helpers
+    gateway-store.ts - in-memory and file-backed gateway persistence
+    gateway.ts    - startGateway (polling loop, retries, idempotency, signed terminal detection)
 
 examples/
   railscard-demo.ts   — RailsCard flow: vault creation → signing → unseal → claim

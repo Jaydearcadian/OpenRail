@@ -111,9 +111,11 @@ async function main() {
     residualDeltaRecipient: payerAddress, // STN-Delta: buffer returns to payer
   };
 
-  // Merchant signs — locks in hardcoded merchant address
+  const invoiceDescription = "API compute node usage - 1000s stream";
+
+  // Merchant signs, locking in hardcoded merchant address and invoice metadata.
   const merchantEnvelope = await signEnvelopeEd25519(
-    bindRailsFlowMerchant(intent, merchantAddress),
+    bindRailsFlowMerchant(intent, merchantAddress, invoiceDescription),
     merchantKeypair
   );
 
@@ -122,7 +124,7 @@ async function main() {
     envelope: merchantEnvelope,
     intent,
     merchantAddress,
-    invoiceDescription: "API compute node usage — 1000s stream",
+    invoiceDescription,
   };
 
   const token = OpenRailsSDK.serializePayload(billingMemo);
