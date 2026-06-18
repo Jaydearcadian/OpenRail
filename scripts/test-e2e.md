@@ -7,11 +7,11 @@ cd sdk && npm run build
 node scripts/tier1.mjs
 ```
 
-All 54 checks should pass. This verifies: accrual math, envelope serialization,
+All 64 checks should pass. This verifies: accrual math, envelope serialization,
 canonical signing and legacy fallback, short links, network addresses, PTB
 construction, Ed25519 signing, RailsFlow merchant and invoice binding, gateway
 event signatures, gateway store/idempotency behavior, encrypted Walrus links,
-and Walrus BlobID conversion.
+Walrus BlobID conversion, and SettlementReceipt indexing helpers.
 
 ---
 

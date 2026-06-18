@@ -12,4 +12,5 @@ export * from "./accrual.js";
 export * from "./heartbeat.js";
 export * from "./gateway-store.js";
 export * from "./gateway.js";
+export * from "./receipts.js";
 export * from "./sui.js";

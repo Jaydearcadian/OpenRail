@@ -87,7 +87,7 @@ Every terminal state fires a single **`SettlementReceipt`** event on-chain — t
 total_paid_to_recipient + residual_returned_to_payer == initial_allocation
 ```
 
-This is the single event a Web2 accounting system needs to subscribe to.
+This is the single event a Web2 accounting system needs to subscribe to. The SDK exports `querySettlementReceipts()` and `getSettlementReceiptByPaycardId()` to normalize V1 receipt events into API-ready records keyed by transaction digest and event sequence.
 
 ---
 
@@ -205,6 +205,7 @@ sdk/
     heartbeat.ts  - canonical signed heartbeat, buffer-low, terminal event helpers
     gateway-store.ts - in-memory and file-backed gateway persistence
     gateway.ts    - startGateway (polling loop, retries, idempotency, signed terminal detection)
+    receipts.ts   - SettlementReceipt parsing, query helpers, and V1 receipt normalization
 
 examples/
   railscard-demo.ts   — RailsCard flow: vault creation → signing → unseal → claim

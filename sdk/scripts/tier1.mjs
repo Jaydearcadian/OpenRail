@@ -27,6 +27,11 @@ import {
   walrusBlobIdToBytes,
   buildMintPTB,
   buildClaimPTB,
+  SETTLEMENT_TYPE_DEPLETED,
+  SETTLEMENT_TYPE_EXPIRED,
+  parseSettlementReceiptEvent,
+  querySettlementReceipts,
+  getSettlementReceiptByPaycardId,
 } from '../dist/index.js';
 import { Ed25519Keypair } from '@mysten/sui/keypairs/ed25519';
 import { mkdtemp } from 'fs/promises';
@@ -623,6 +628,148 @@ check('invalid Walrus BlobID length is rejected',
       return true;
     }
   })()
+);
+
+// ── Settlement receipt indexing ───────────────────────────────────────────────
+console.log('\nSettlement receipt indexing');
+
+const receiptEvent = {
+  id: { txDigest: 'receiptTx1', eventSeq: '0' },
+  packageId: PKG,
+  transactionModule: 'paycard_v1',
+  sender: ADDR,
+  type: `${PKG}::events::SettlementReceipt`,
+  parsedJson: {
+    paycard_id: PAYD,
+    payer: ADDR,
+    recipient: '0x' + '4'.repeat(64),
+    total_paid_to_recipient: '1000',
+    residual_returned_to_payer: '50',
+    settlement_type: '1',
+    closed_at_seconds: '12345',
+  },
+  timestampMs: '12345000',
+};
+const receiptEvent2 = {
+  ...receiptEvent,
+  id: { txDigest: 'receiptTx2', eventSeq: '1' },
+  parsedJson: {
+    ...receiptEvent.parsedJson,
+    paycard_id: '0x' + '5'.repeat(64),
+    settlement_type: '0',
+  },
+};
+const parsedReceipt = parseSettlementReceiptEvent(receiptEvent);
+
+// 55
+check('SettlementReceipt event normalizes snake_case fields',
+  parsedReceipt?.paycardId === PAYD &&
+  parsedReceipt?.payer === ADDR &&
+  parsedReceipt?.totalPaidToRecipient === '1000' &&
+  parsedReceipt?.residualReturnedToPayer === '50' &&
+  parsedReceipt?.settlementType === SETTLEMENT_TYPE_EXPIRED &&
+  parsedReceipt?.closedAtSeconds === 12345
+);
+// 56
+check('SettlementReceipt parser includes event identity',
+  parsedReceipt?.transactionDigest === 'receiptTx1' &&
+  parsedReceipt?.eventSeq === '0' &&
+  parsedReceipt?.eventId.txDigest === 'receiptTx1' &&
+  parsedReceipt?.packageId === PKG
+);
+// 57
+check('SettlementReceipt parser rejects unrelated events',
+  parseSettlementReceiptEvent({ ...receiptEvent, type: `${PKG}::events::SettlementClaimed` }) === null
+);
+// 58
+check('SettlementReceipt parser rejects invalid settlement type',
+  parseSettlementReceiptEvent({
+    ...receiptEvent,
+    parsedJson: { ...receiptEvent.parsedJson, settlement_type: '9' },
+  }) === null
+);
+// 59
+check('SettlementReceipt parser supports Sui ID-shaped parsed fields',
+  parseSettlementReceiptEvent({
+    ...receiptEvent,
+    parsedJson: { ...receiptEvent.parsedJson, paycard_id: { id: PAYD } },
+  })?.paycardId === PAYD
+);
+// 60
+check('SettlementReceipt parser rejects malformed missing fields',
+  parseSettlementReceiptEvent({
+    ...receiptEvent,
+    parsedJson: { ...receiptEvent.parsedJson, recipient: undefined },
+  }) === null
+);
+
+let capturedReceiptQuery;
+const receiptClient = {
+  async queryEvents(query) {
+    capturedReceiptQuery = query;
+    return {
+      data: [receiptEvent, receiptEvent2],
+      nextCursor: { txDigest: 'receiptTx2', eventSeq: '1' },
+      hasNextPage: false,
+    };
+  },
+};
+const receiptPage = await querySettlementReceipts({
+  client: receiptClient,
+  packageId: PKG,
+  paycardId: PAYD,
+  settlementType: SETTLEMENT_TYPE_EXPIRED,
+  limit: 25,
+  descendingOrder: true,
+});
+
+// 61
+check('querySettlementReceipts queries package SettlementReceipt type',
+  capturedReceiptQuery.query.MoveEventType === `${PKG}::events::SettlementReceipt` &&
+  capturedReceiptQuery.limit === 25 &&
+  capturedReceiptQuery.order === 'descending'
+);
+// 62
+check('querySettlementReceipts filters normalized receipts',
+  receiptPage.data.length === 1 &&
+  receiptPage.data[0].paycardId === PAYD &&
+  receiptPage.data[0].settlementType === SETTLEMENT_TYPE_EXPIRED
+);
+
+let pagedCalls = 0;
+const pagedReceiptClient = {
+  async queryEvents(query) {
+    pagedCalls++;
+    if (pagedCalls === 1) {
+      return {
+        data: [receiptEvent2],
+        nextCursor: { txDigest: 'receiptTx2', eventSeq: '1' },
+        hasNextPage: true,
+      };
+    }
+    return {
+      data: [receiptEvent],
+      nextCursor: null,
+      hasNextPage: false,
+    };
+  },
+};
+const foundReceipt = await getSettlementReceiptByPaycardId({
+  client: pagedReceiptClient,
+  packageId: PKG,
+  paycardId: PAYD,
+  limit: 1,
+  maxPages: 3,
+});
+
+// 63
+check('getSettlementReceiptByPaycardId paginates until match',
+  pagedCalls === 2 &&
+  foundReceipt?.paycardId === PAYD
+);
+// 64
+check('SettlementReceipt depleted type constant is exported',
+  SETTLEMENT_TYPE_DEPLETED === 0
 );
 
 // ── Result ────────────────────────────────────────────────────────────────────
