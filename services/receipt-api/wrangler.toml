@@ -1,0 +1,8 @@
+name = "openrails-receipt-api"
+main = "src/handler.ts"
+compatibility_date = "2026-06-18"
+
+[vars]
+SUI_NETWORK = "testnet"
+SUI_RPC_URL = "https://fullnode.testnet.sui.io:443"
+OPENRAILS_PACKAGE_ID = "0xfaf26d6a2028446fa61f4171c27f26209dc7951ea8634dc8ce88e1fa125dacf1"

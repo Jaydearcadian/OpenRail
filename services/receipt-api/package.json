@@ -1,0 +1,21 @@
+{
+  "name": "@openrails/receipt-api",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsc",
+    "dev": "npx ts-node --esm src/server.ts",
+    "test": "npm run build && node --test test/*.test.mjs",
+    "deploy": "wrangler deploy"
+  },
+  "dependencies": {
+    "@openrails/sdk": "file:../../sdk"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.0.0",
+    "@types/node": "^25.9.3",
+    "ts-node": "^10.9.0",
+    "typescript": "^5.9.3"
+  }
+}
