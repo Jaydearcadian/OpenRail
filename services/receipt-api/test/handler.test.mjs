@@ -450,3 +450,59 @@ test('admin receipt indexer requires admin token', async () => {
   assert.equal(response.status, 401);
   assert.equal(body.error.code, 'unauthorized');
 });
+
+function u64le(n) {
+  const bytes = new Array(8).fill(0);
+  let v = BigInt(n);
+  for (let i = 0; i < 8; i += 1) {
+    bytes[i] = Number(v & 0xffn);
+    v >>= 8n;
+  }
+  return bytes;
+}
+
+function inspectStub(nextValue) {
+  return {
+    async devInspectTransactionBlock() {
+      return { results: [{ returnValues: [[u64le(nextValue), 'u64']] }] };
+    },
+  };
+}
+
+const ACCT = '0x' + 'a'.repeat(64);
+
+test('GET /v1/nonces/:id/:lane returns the lane next value', async () => {
+  const response = await handleRequest(
+    new Request(`https://api.openrails.test/v1/nonces/${ACCT}/0`),
+    env,
+    undefined,
+    inspectStub(5)
+  );
+  const body = await json(response);
+  assert.equal(response.status, 200);
+  assert.equal(body.nonceAccountId, ACCT);
+  assert.equal(body.lane, '0');
+  assert.equal(body.nextNonce, '5');
+});
+
+test('GET /v1/nonces rejects a non-integer lane', async () => {
+  const response = await handleRequest(
+    new Request(`https://api.openrails.test/v1/nonces/${ACCT}/abc`),
+    env,
+    undefined,
+    inspectStub(5)
+  );
+  const body = await json(response);
+  assert.equal(response.status, 400);
+  assert.equal(body.error.code, 'invalid_request');
+});
+
+test('GET /v1/nonces rejects a non-hex account id', async () => {
+  const response = await handleRequest(
+    new Request('https://api.openrails.test/v1/nonces/notanid/0'),
+    env,
+    undefined,
+    inspectStub(5)
+  );
+  assert.equal(response.status, 400);
+});

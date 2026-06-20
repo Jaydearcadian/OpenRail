@@ -18,6 +18,8 @@ import {
   type OpenRailsProofStreamState,
 } from "@openrails/sdk/worker";
 import { SuiClient } from "@mysten/sui/client";
+import { Transaction } from "@mysten/sui/transactions";
+import { bcs } from "@mysten/sui/bcs";
 import { runReceiptIndexer } from "./indexer.js";
 import {
   createD1ReceiptStorage,
@@ -150,6 +152,55 @@ function createClient(config: ReceiptApiConfig, override?: ReceiptClient): Recei
   return override && typeof override.queryEvents === "function"
     ? override
     : new SuiClient({ url: config.rpcUrl });
+}
+
+type InspectClient = Pick<SuiClient, "devInspectTransactionBlock">;
+
+function createInspectClient(config: ReceiptApiConfig, override?: InspectClient): InspectClient {
+  return override && typeof override.devInspectTransactionBlock === "function"
+    ? override
+    : new SuiClient({ url: config.rpcUrl });
+}
+
+/**
+ * GET /v1/nonces/:nonceAccountId/:lane — the lane's next expected nonce value, read
+ * read-only via devInspect of nonce_account::next_nonce. (Resolution by payer address
+ * is deferred: NonceAccount is shared and create_nonce_account emits no event, so there
+ * is no on-chain payer->object index yet — a future NonceAccountCreated event enables it.)
+ */
+async function handleGetNonce(
+  nonceAccountId: string,
+  lane: string,
+  config: ReceiptApiConfig,
+  inspectOverride?: InspectClient
+): Promise<Response> {
+  if (!isHexId(nonceAccountId)) {
+    throw new Error("nonceAccountId must be a 0x-prefixed hex ID.");
+  }
+  if (!/^\d+$/.test(lane)) {
+    throw new Error("lane must be a non-negative integer.");
+  }
+
+  const tx = new Transaction();
+  tx.moveCall({
+    target: `${config.packageId}::nonce_account::next_nonce`,
+    arguments: [tx.object(nonceAccountId), tx.pure.u64(BigInt(lane))],
+  });
+
+  const client = createInspectClient(config, inspectOverride);
+  const res = await client.devInspectTransactionBlock({
+    sender: "0x0000000000000000000000000000000000000000000000000000000000000000",
+    transactionBlock: tx,
+  });
+
+  const ret = res.results?.[0]?.returnValues?.[0];
+  if (!ret) {
+    return errorResponse(404, "not_found", "NonceAccount not found or returned no value.");
+  }
+  const [bytes] = ret as [number[], string];
+  const nextNonce = bcs.u64().parse(Uint8Array.from(bytes));
+
+  return jsonResponse({ nonceAccountId, lane, nextNonce });
 }
 
 function getStorage(env: ReceiptApiEnv): ReceiptStorage | null {
@@ -461,7 +512,8 @@ async function handleRunReceiptIndexer(
 export async function handleRequest(
   request: Request,
   env: ReceiptApiEnv = {},
-  clientOverride?: ReceiptClient
+  clientOverride?: ReceiptClient,
+  inspectOverride?: InspectClient
 ): Promise<Response> {
   if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: corsHeaders });
   if (request.method !== "GET" && request.method !== "POST") {
@@ -514,6 +566,16 @@ export async function handleRequest(
     const proofMatch = url.pathname.match(/^\/v1\/proofs\/([^/]+)$/);
     if (proofMatch) {
       return await handleGetProof(decodeURIComponent(proofMatch[1]), url, config, storage, clientOverride);
+    }
+
+    const nonceMatch = url.pathname.match(/^\/v1\/nonces\/([^/]+)\/([^/]+)$/);
+    if (nonceMatch) {
+      return await handleGetNonce(
+        decodeURIComponent(nonceMatch[1]),
+        decodeURIComponent(nonceMatch[2]),
+        config,
+        inspectOverride
+      );
     }
 
     const match = url.pathname.match(/^\/v1\/receipts\/([^/]+)$/);

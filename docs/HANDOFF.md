@@ -357,9 +357,9 @@ Move tests passed with deprecated `vector::empty` warnings only.
 3. Access credentials are not yet a product primitive.
    - No finalized `Authorization: OpenRails <credential>` flow.
    - Gateway and admin auth exist for operator paths, not end-user service access.
-4. The formal product Receipt Layer is partially started.
-   - DONE: canonical `metadata_hash` is now bound on-chain at mint (V1.2).
-   - PENDING: product receipt JSON schema + SDK builders, residual recovery receipt API, PDF/QR/export, access-credential binding to product receipt ID + metadata hash.
+4. The formal product Receipt Layer: **SDK layer implemented (V1.2).**
+   - DONE: canonical `metadata_hash` bound on-chain at mint; SDK `product-receipt.ts` (`computeMetadataHash`/`metadataHashHex`/`verifyMetadataHash` + `createPaymentReceipt`/`createSettlementReceipt`/`createResidualRecoveryReceipt`, `ProductReceiptV1` schema, deterministic `receiptId`); Worker `GET /v1/nonces/:nonceAccountId/:lane`.
+   - PENDING: PDF/QR/merchant export, a Worker `/v1/product-receipts/:paycardId` route (needs off-chain metadata sourcing), `ChannelMetadataAnchored` indexing to expose `metadata_hash` in proofs, the by-`:payer` nonce form (needs a `NonceAccountCreated` Move event), and access-credential binding to product receipt id + metadata hash.
    - Existing receipts still primarily mean terminal onchain `SettlementReceipt` records.
 5. V2 Vault, Conduit, and DOF architecture: **design locked** (`docs/architecture/v2-blueprint.md` — DOF = Sui Dynamic Object Fields, object model + ABI sketch + migration). Not yet built.
 6. `uiland/**` remains untracked and intentionally excluded.
