@@ -259,6 +259,7 @@ export const proofLinks: ProofLink[] = [
 export const dashboardNav: NavItem[] = [
   { route: "overview", label: "Overview", icon: "◌", group: "control" },
   { route: "create", label: "Create", icon: "+", group: "control" },
+  { route: "write", label: "Open a rail", icon: "✎", group: "control" },
   { route: "streams", label: "Streams", icon: "⇄", group: "control" },
   { route: "gateway", label: "Gateway", icon: "⌁", group: "infrastructure" },
   { route: "receipts", label: "Receipts", icon: "✓", group: "infrastructure" },

@@ -14,6 +14,7 @@ import { StatusMatrix } from "./dashboard/StatusMatrix";
 import { StreamDetail } from "./dashboard/StreamDetail";
 import { SurfaceHeader } from "./dashboard/SurfaceHeader";
 import { TrustBoundaryBanner } from "./dashboard/TrustBoundaryBanner";
+import { WriteSurface } from "./dashboard/WriteSurface";
 import { MetricCard } from "./MetricCard";
 import { ReceiptPanel } from "./ReceiptPanel";
 import { StreamTable } from "./StreamTable";
@@ -154,6 +155,7 @@ export function DashboardShell({ onBack }: DashboardShellProps) {
             </>
           ) : null}
           {state.route === "create" ? <CreatePreview dispatch={dispatch} /> : null}
+          {state.route === "write" ? <WriteSurface /> : null}
           {state.route === "streams" ? (
             <section className="streams-layout">
               <StreamTable

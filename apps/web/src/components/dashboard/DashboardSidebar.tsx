@@ -91,15 +91,17 @@ export function DashboardSidebar({ items, activeRoute, collapsed, mobileOpen, on
       <div className="nav-group">
         <span className="nav-group-label nav-group-label--roadmap">Roadmap</span>
         <nav className="dashboard-nav" aria-label="Roadmap navigation">
-          <button type="button" className="nav-item--locked" tabIndex={-1} aria-disabled="true" aria-label="Nonce Lanes — coming in V1.2">
-            <span aria-hidden="true">⟨N⟩</span>
-            <strong>Nonce Lanes</strong>
-            <span className="v12-badge">V1.2</span>
-          </button>
-          <button type="button" className="nav-item--locked" tabIndex={-1} aria-disabled="true" aria-label="Write Access — coming in V1.2">
+          <button
+            type="button"
+            className={activeRoute === "write" ? "active" : ""}
+            aria-current={activeRoute === "write" ? "page" : undefined}
+            aria-label="Write Access — live"
+            title="Write Access"
+            onClick={() => goTo("write")}
+          >
             <span aria-hidden="true">✍</span>
             <strong>Write Access</strong>
-            <span className="v12-badge">V1.2</span>
+            <span className="v12-badge" style={{ background: "var(--sage-soft)", color: "var(--sage)" }}>LIVE</span>
           </button>
           <button type="button" className="nav-item--locked" tabIndex={-1} aria-disabled="true" aria-label="Access Credentials — coming in V1.2">
             <span aria-hidden="true">⚿</span>
@@ -109,9 +111,9 @@ export function DashboardSidebar({ items, activeRoute, collapsed, mobileOpen, on
         </nav>
       </div>
 
-      <div className="sidebar-safety" title="Read-only Worker — no wallet writes">
-        <strong><span>Read-only Worker</span></strong>
-        <p>No wallet signature, Sui write, or Walrus upload will run. Receipt and stream reads use the public Worker.</p>
+      <div className="sidebar-safety" title="Wallet writes enabled (V1.2)">
+        <strong><span>Wallet writes live</span></strong>
+        <p>Open / claim / cancel / resolve submit real Sui transactions. Reads use the public Worker; receipts remain authoritative.</p>
       </div>
     </aside>
   );

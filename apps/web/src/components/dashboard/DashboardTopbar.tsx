@@ -1,5 +1,6 @@
 import type { Dispatch } from "react";
 import type { DashboardAction, DashboardRoute, MockWeb3State } from "../../types/dashboard";
+import { ConnectMenu } from "../../wallet/ConnectMenu";
 
 interface DashboardTopbarProps {
   route: DashboardRoute;
@@ -11,18 +12,10 @@ interface DashboardTopbarProps {
   dispatch: Dispatch<DashboardAction>;
 }
 
-const web3Labels: Record<MockWeb3State, string> = {
-  disconnected: "wallet: disconnected",
-  "wrong-network": "wallet: wrong network",
-  "pending-signature": "wallet: signing",
-  "pending-confirmation": "wallet: confirming",
-  confirmed: "wallet: confirmed",
-  failed: "wallet: failed",
-};
-
 const routeActions: Record<DashboardRoute, { label: string; target: DashboardRoute }> = {
-  overview: { label: "+ rail", target: "create" },
-  create: { label: "Inspect streams", target: "streams" },
+  overview: { label: "Open a rail", target: "write" },
+  create: { label: "Open a rail", target: "write" },
+  write: { label: "Inspect streams", target: "streams" },
   streams: { label: "View receipts", target: "receipts" },
   gateway: { label: "Verify proof", target: "proof" },
   receipts: { label: "Open proof center", target: "proof" },
@@ -32,7 +25,7 @@ const routeActions: Record<DashboardRoute, { label: string; target: DashboardRou
 
 const searchableRoutes: DashboardRoute[] = ["streams", "receipts", "overview"];
 
-export function DashboardTopbar({ route, title, web3State, search, onSearch, onMenu, dispatch }: DashboardTopbarProps) {
+export function DashboardTopbar({ route, title, search, onSearch, onMenu, dispatch }: DashboardTopbarProps) {
   const action = routeActions[route];
   const canSearch = searchableRoutes.includes(route);
 
@@ -58,10 +51,10 @@ export function DashboardTopbar({ route, title, web3State, search, onSearch, onM
       </label>
 
       <div className="topbar-actions" aria-label="Dashboard status">
-        <span className="status-chip">{web3Labels[web3State]}</span>
         <button type="button" className="btn-ink" onClick={() => dispatch({ type: "set-route", route: action.target })}>
           {action.label}
         </button>
+        <ConnectMenu />
       </div>
     </header>
   );

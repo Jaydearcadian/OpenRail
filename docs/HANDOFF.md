@@ -351,9 +351,10 @@ Move tests passed with deprecated `vector::empty` warnings only.
 1. Nonce Lane architecture: **on-chain layer implemented (V1.2), off-chain pending.**
    - DONE (branch `v1-2-nonce-lanes`, `sui move test` green, NOT published): `move/sources/nonce_account.move` — per-payer `NonceAccount { payer, lanes: Table<nonce_channel, next_nonce_value> }` with `create_nonce_account` / `verify_and_consume` / `next_nonce`. Lane consumption wired into `mint_and_fund_envelope` (RailsFlow) and `create_sealed_vault` (RailsCard); `payer = sender`, atomic (replay/stale value aborts the whole tx). `metadata_hash` bound into `Paycard`/`SealedVault` + the vault signature message + `ChannelMetadataAnchored` event. `PROTOCOL_VERSION = 12`.
    - PENDING (Phase 2): SDK `NonceEngine`, SDK `buildVaultMessage` + entry-param updates to the new ABI, then publish the V1.2 package and repoint receipt-api / web / sdk package IDs.
-2. Public writes are not exposed in the web app or CLI.
-   - Protocol and SDK write paths exist (SDK PTB builders not yet updated to the V1.2 nonce/metadata ABI).
-   - Public product surface remains read/proof-first.
+2. Public writes: **CLI + web implemented (V1.2), live e2e pending publish.**
+   - CLI: `openrails nonce-create/open/open-vault/unseal/claim/cancel/resolve` (branch `v1-2-nonce-lanes`).
+   - Web (branch `web-wallet-writes`): @mysten/dapp-kit + @mysten/enoki (Google/Facebook/Twitch zkLogin + sponsored gas), `useChannelWrite` 13-state machine, "Open a rail" surface (open/claim/cancel/resolve), ConnectMenu in topbar. Typecheck + build green. Pins: dapp-kit 0.20.0 + enoki 0.11.0 (sui v1.x, matching the SDK); Vite `dedupe` collapses @mysten/sui copies.
+   - PENDING (operator): publish V1.2, set `VITE_OPENRAILS_PACKAGE_ID` + Enoki/Google secrets (`apps/web/.env.local` from `.env.example`), run the live e2e per `apps/web/WALLET_E2E.md`. RailsCard vault open/unseal is CLI-only in the web for now.
 3. Access credentials are not yet a product primitive.
    - No finalized `Authorization: OpenRails <credential>` flow.
    - Gateway and admin auth exist for operator paths, not end-user service access.

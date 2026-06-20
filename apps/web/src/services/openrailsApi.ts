@@ -5,11 +5,11 @@ import {
   type OpenRailsStreamEvent as SdkOpenRailsStreamEvent,
   type OpenRailsStreamState as SdkOpenRailsStreamState,
 } from "@openrails/sdk/api";
+import { OPENRAILS_PACKAGE_ID } from "../config";
 
 const DEFAULT_API_BASE_URL = "https://openrails-receipt-api.microcosm.workers.dev";
 
-export const OPENRAILS_PACKAGE_ID =
-  "0x7cb4ca17166b7999223d665db2e43991288b1fd8466b930e4c2a345e847aaf55";
+export { OPENRAILS_PACKAGE_ID };
 
 export const OPENRAILS_PAYCARDS = [
   {

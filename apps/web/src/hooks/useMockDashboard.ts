@@ -47,6 +47,10 @@ const routeTitles: Record<DashboardRoute, { title: string; description: string }
     title: "Create previews",
     description: "Walk RailsCard and RailsFlow setup without signing or submitting transactions.",
   },
+  write: {
+    title: "Open a rail",
+    description: "Connect a wallet and submit a real RailsFlow channel — open, then claim, cancel, or resolve.",
+  },
   streams: {
     title: "Payment streams",
     description: "Inspect live Worker rails, projected accrual, metadata state, and receipt status.",

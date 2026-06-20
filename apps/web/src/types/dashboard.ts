@@ -1,4 +1,4 @@
-export type DashboardRoute = "overview" | "create" | "streams" | "gateway" | "receipts" | "proof" | "settings";
+export type DashboardRoute = "overview" | "create" | "write" | "streams" | "gateway" | "receipts" | "proof" | "settings";
 
 export type ScenarioState = "normal" | "loading" | "empty" | "error";
 
