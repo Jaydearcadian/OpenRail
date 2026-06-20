@@ -6,6 +6,7 @@ module open_rails::sealed_vault_tests {
     use sui::sui::SUI;
     use open_rails::sealed_vault::{Self, SealedVault};
     use open_rails::paycard_v1::{Self, Paycard};
+    use open_rails::nonce_account::{Self, NonceAccount};
 
     const PAYER: address     = @0xA;
     const RECIPIENT: address = @0xB;
@@ -15,7 +16,10 @@ module open_rails::sealed_vault_tests {
     const RATE: u64     = 100;
     const POOL: u64     = 10000;
     const DURATION: u64 = 100;
-    const NONCE: u64    = 42;
+    // V1.2: the vault nonce is the lane's expected next value; the first open in a fresh
+    // lane must use 0.
+    const NONCE: u64    = 0;
+    const NONCE_CHANNEL: u64 = 0;
 
     // Non-zero dummy bytes for unit tests. All-zero pubkey is the Ed25519 identity
     // element and can accidentally satisfy verification — use non-zero bytes instead.
@@ -39,11 +43,15 @@ module open_rails::sealed_vault_tests {
     const GAS_RESERVE: u64 = 50; // Tier-2 gas dispensed to recipient at unseal
 
     fun create_vault(scenario: &mut ts::Scenario) {
+        // PAYER creates their nonce account (one tx) before sealing the vault.
+        ts::next_tx(scenario, PAYER);
+        { nonce_account::create_nonce_account(ts::ctx(scenario)); };
+
         ts::next_tx(scenario, PAYER);
         {
-            let ctx = ts::ctx(scenario);
-            let mut coin = coin::mint_for_testing<SUI>(POOL * 2, ctx);
-            let mut gas_coin = coin::mint_for_testing<SUI>(GAS_RESERVE * 2, ctx);
+            let mut nacct = ts::take_shared<NonceAccount>(scenario);
+            let mut coin = coin::mint_for_testing<SUI>(POOL * 2, ts::ctx(scenario));
+            let mut gas_coin = coin::mint_for_testing<SUI>(GAS_RESERVE * 2, ts::ctx(scenario));
             sealed_vault::create_sealed_vault<SUI>(
                 &mut coin,
                 POOL,
@@ -56,10 +64,14 @@ module open_rails::sealed_vault_tests {
                 RECOVERY,
                 NONCE,
                 sealed_vault::curve_ed25519(),
-                ctx
+                &mut nacct,
+                NONCE_CHANNEL,
+                vector::empty(),  // no product metadata
+                ts::ctx(scenario)
             );
             transfer::public_transfer(coin, PAYER);
             transfer::public_transfer(gas_coin, PAYER);
+            ts::return_shared(nacct);
         };
     }
 

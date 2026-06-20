@@ -6,6 +6,7 @@ module open_rails::paycard_v1 {
     use sui::transfer;
     use sui::clock::{Self, Clock};
     use open_rails::events;
+    use open_rails::nonce_account::{Self, NonceAccount};
 
     // --- Error Coding Matrix ---
     const EStreamExpired: u64          = 101;
@@ -21,6 +22,9 @@ module open_rails::paycard_v1 {
     const STATUS_DEPLETED: u8 = 2;
     const STATUS_CANCELLED: u8 = 3;
 
+    // --- Protocol version (V1.2 = 12) ---
+    const PROTOCOL_VERSION: u64 = 12;
+
     /// The foundational OpenRails V1.1 Channel primitive.
     /// Shared so the recipient can claim and the payer can cancel without object handoff.
     public struct Paycard<phantom T> has key, store {
@@ -35,11 +39,14 @@ module open_rails::paycard_v1 {
         last_checkpoint_timestamp: u64,
         residual_delta_recipient: address,
         walrus_blob_id: Option<vector<u8>>,
+        metadata_hash: vector<u8>,        // V1.2: canonical product/invoice terms hash (empty = none)
         status: u8,
     }
 
-    /// Mints and funds an isolated Paycard envelope (RailsCard — outbound grant by payer).
-    /// Pass an empty vector for blob_id if no Walrus metadata is needed;
+    /// Mints and funds an isolated Paycard envelope (RailsFlow — direct billing by payer).
+    /// V1.2: the open consumes the payer's nonce lane (replay-safe) and binds a canonical
+    /// metadata hash. `payer = sender`, so the lane is consumed against the caller.
+    /// Pass an empty vector for blob_id / metadata_hash to skip Walrus / product metadata;
     /// pass a 32-byte BlobID to anchor Walrus metadata atomically in the same transaction.
     public entry fun mint_and_fund_envelope<T>(
         funding_vault: &mut Coin<T>,
@@ -50,9 +57,14 @@ module open_rails::paycard_v1 {
         duration: u64,
         recovery_target: address,
         blob_id: vector<u8>,
+        nonce_account: &mut NonceAccount,
+        nonce_channel: u64,
+        nonce_value: u64,
+        metadata_hash: vector<u8>,
         ctx: &mut TxContext
     ) {
         let payer_address = tx_context::sender(ctx);
+        nonce_account::verify_and_consume(nonce_account, payer_address, nonce_channel, nonce_value);
 
         let active_balance = coin::balance_mut(funding_vault);
         let isolated_pool = balance::split(active_balance, total_provision_amount);
@@ -79,6 +91,7 @@ module open_rails::paycard_v1 {
             last_checkpoint_timestamp: start_time,
             residual_delta_recipient: recovery_target,
             walrus_blob_id,
+            metadata_hash,
             status: STATUS_ACTIVE,
         };
 
@@ -94,6 +107,9 @@ module open_rails::paycard_v1 {
         );
         if (option::is_some(&paycard.walrus_blob_id)) {
             events::emit_blob_anchored(id_for_event, *option::borrow(&paycard.walrus_blob_id));
+        };
+        if (vector::length(&metadata_hash) > 0) {
+            events::emit_channel_metadata_anchored(id_for_event, metadata_hash, nonce_channel, nonce_value);
         };
         transfer::share_object(paycard);
     }
@@ -318,6 +334,9 @@ module open_rails::paycard_v1 {
         duration: u64,
         recovery_target: address,
         blob_id: vector<u8>,
+        metadata_hash: vector<u8>,
+        nonce_channel: u64,
+        nonce_value: u64,
         ctx: &mut TxContext
     ): Paycard<T> {
         let paycard_id = object::new(ctx);
@@ -343,6 +362,7 @@ module open_rails::paycard_v1 {
             last_checkpoint_timestamp: start_timestamp,
             residual_delta_recipient: recovery_target,
             walrus_blob_id,
+            metadata_hash,
             status: STATUS_ACTIVE,
         };
 
@@ -359,6 +379,9 @@ module open_rails::paycard_v1 {
         if (option::is_some(&paycard.walrus_blob_id)) {
             events::emit_blob_anchored(id_for_event, *option::borrow(&paycard.walrus_blob_id));
         };
+        if (vector::length(&metadata_hash) > 0) {
+            events::emit_channel_metadata_anchored(id_for_event, metadata_hash, nonce_channel, nonce_value);
+        };
         paycard
     }
 
@@ -371,9 +394,11 @@ module open_rails::paycard_v1 {
     public fun get_initial_allocation<T>(paycard: &Paycard<T>): u64      { paycard.initial_allocation }
     public fun get_flow_rate<T>(paycard: &Paycard<T>): u64               { paycard.max_flow_rate_per_second }
     public fun get_blob_id<T>(paycard: &Paycard<T>): &Option<vector<u8>> { &paycard.walrus_blob_id }
+    public fun get_metadata_hash<T>(paycard: &Paycard<T>): vector<u8>     { paycard.metadata_hash }
     public fun status_active(): u8   { STATUS_ACTIVE }
     public fun status_depleted(): u8 { STATUS_DEPLETED }
     public fun status_cancelled(): u8 { STATUS_CANCELLED }
+    public fun protocol_version(): u64 { PROTOCOL_VERSION }
 
     fun channel_end_time(start_timestamp: u64, duration_seconds: u64): u64 {
         if (duration_seconds > U64_MAX - start_timestamp) {

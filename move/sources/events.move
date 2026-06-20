@@ -39,6 +39,15 @@ module open_rails::events {
         blob_id: vector<u8>,
     }
 
+    /// V1.2: emitted at mint when a channel binds a canonical product/invoice metadata hash
+    /// under a nonce lane. Ties the on-chain channel to off-chain product receipt terms.
+    public struct ChannelMetadataAnchored has copy, drop {
+        paycard_id: ID,
+        metadata_hash: vector<u8>,
+        nonce_channel: u64,
+        nonce_value: u64,
+    }
+
     public fun emit_minted(
         paycard_id: ID,
         payer: address,
@@ -82,6 +91,15 @@ module open_rails::events {
 
     public fun emit_blob_anchored(paycard_id: ID, blob_id: vector<u8>) {
         event::emit(BlobIdAnchored { paycard_id, blob_id });
+    }
+
+    public fun emit_channel_metadata_anchored(
+        paycard_id: ID,
+        metadata_hash: vector<u8>,
+        nonce_channel: u64,
+        nonce_value: u64,
+    ) {
+        event::emit(ChannelMetadataAnchored { paycard_id, metadata_hash, nonce_channel, nonce_value });
     }
 
     // --- Settlement types ---

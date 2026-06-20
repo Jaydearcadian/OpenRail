@@ -5,6 +5,7 @@ module open_rails::paycard_tests {
     use sui::clock::{Self};
     use sui::sui::SUI;
     use open_rails::paycard_v1::{Self, Paycard};
+    use open_rails::nonce_account::{Self, NonceAccount};
 
     const PAYER: address     = @0xA;
     const RECIPIENT: address = @0xB;
@@ -21,20 +22,37 @@ module open_rails::paycard_tests {
 
     // ---- Helpers ----
 
+    // 32-byte sample product/invoice metadata hash for V1.2 binding tests.
+    fun sample_hash(): vector<u8> {
+        let mut h = vector::empty<u8>();
+        let mut i = 0u8;
+        while (i < 32) { vector::push_back(&mut h, 0xABu8); i = i + 1 };
+        h
+    }
+
+    // PAYER creates their shared NonceAccount (one tx). Must precede any open.
+    fun setup_nonce_account(scenario: &mut ts::Scenario) {
+        ts::next_tx(scenario, PAYER);
+        { nonce_account::create_nonce_account(ts::ctx(scenario)); };
+    }
+
     fun mint_paycard(scenario: &mut ts::Scenario) {
         mint_paycard_with(scenario, POOL, RATE, DURATION);
     }
 
+    // Creates PAYER's nonce account then opens a direct envelope consuming lane 0, value 0,
+    // with no product metadata. Lifecycle tests reuse this single-open helper.
     fun mint_paycard_with(
         scenario: &mut ts::Scenario,
         pool: u64,
         rate: u64,
         duration: u64
     ) {
+        setup_nonce_account(scenario);
         ts::next_tx(scenario, PAYER);
         {
-            let ctx = ts::ctx(scenario);
-            let mut coin = coin::mint_for_testing<SUI>(pool * 2, ctx);
+            let mut nacct = ts::take_shared<NonceAccount>(scenario);
+            let mut coin = coin::mint_for_testing<SUI>(pool * 2, ts::ctx(scenario));
             paycard_v1::mint_and_fund_envelope<SUI>(
                 &mut coin,
                 pool,
@@ -43,10 +61,15 @@ module open_rails::paycard_tests {
                 START_MS / 1000,  // start_time in seconds
                 duration,
                 RECOVERY,
-                vector::empty(),
-                ctx
+                vector::empty(),  // no Walrus blob
+                &mut nacct,
+                0,                // nonce_channel
+                0,                // nonce_value (first open in lane)
+                vector::empty(),  // no product metadata
+                ts::ctx(scenario)
             );
             transfer::public_transfer(coin, PAYER);
+            ts::return_shared(nacct);
         };
     }
 
@@ -66,6 +89,66 @@ module open_rails::paycard_tests {
             assert!(paycard_v1::get_flow_rate(&paycard) == RATE, 0);
             assert!(paycard_v1::get_status(&paycard) == paycard_v1::status_active(), 0);
             ts::return_shared(paycard);
+        };
+        ts::end(scenario);
+    }
+
+    #[test]
+    fun test_mint_binds_metadata_hash() {
+        let mut scenario = ts::begin(PAYER);
+        setup_nonce_account(&mut scenario);
+        ts::next_tx(&mut scenario, PAYER);
+        {
+            let mut nacct = ts::take_shared<NonceAccount>(&scenario);
+            let mut coin = coin::mint_for_testing<SUI>(POOL * 2, ts::ctx(&mut scenario));
+            paycard_v1::mint_and_fund_envelope<SUI>(
+                &mut coin, POOL, RATE, RECIPIENT, START_MS / 1000, DURATION, RECOVERY,
+                vector::empty(), &mut nacct, 3, 0, sample_hash(), ts::ctx(&mut scenario)
+            );
+            transfer::public_transfer(coin, PAYER);
+            ts::return_shared(nacct);
+        };
+
+        ts::next_tx(&mut scenario, RECIPIENT);
+        {
+            let paycard = ts::take_shared<Paycard<SUI>>(&scenario);
+            assert!(paycard_v1::get_metadata_hash(&paycard) == sample_hash(), 0);
+            ts::return_shared(paycard);
+        };
+        ts::end(scenario);
+    }
+
+    // Replaying the same lane value on a second open aborts (no replay of signed intents).
+    #[test]
+    #[expected_failure(abort_code = open_rails::nonce_account::E_NONCE_MISMATCH)]
+    fun test_duplicate_nonce_rejected() {
+        let mut scenario = ts::begin(PAYER);
+        setup_nonce_account(&mut scenario);
+
+        // First open: lane 0, value 0 → lane advances to 1.
+        ts::next_tx(&mut scenario, PAYER);
+        {
+            let mut nacct = ts::take_shared<NonceAccount>(&scenario);
+            let mut coin = coin::mint_for_testing<SUI>(POOL * 2, ts::ctx(&mut scenario));
+            paycard_v1::mint_and_fund_envelope<SUI>(
+                &mut coin, POOL, RATE, RECIPIENT, START_MS / 1000, DURATION, RECOVERY,
+                vector::empty(), &mut nacct, 0, 0, vector::empty(), ts::ctx(&mut scenario)
+            );
+            transfer::public_transfer(coin, PAYER);
+            ts::return_shared(nacct);
+        };
+
+        // Second open replays value 0 (lane now expects 1) → abort.
+        ts::next_tx(&mut scenario, PAYER);
+        {
+            let mut nacct = ts::take_shared<NonceAccount>(&scenario);
+            let mut coin = coin::mint_for_testing<SUI>(POOL * 2, ts::ctx(&mut scenario));
+            paycard_v1::mint_and_fund_envelope<SUI>(
+                &mut coin, POOL, RATE, RECIPIENT, START_MS / 1000, DURATION, RECOVERY,
+                vector::empty(), &mut nacct, 0, 0, vector::empty(), ts::ctx(&mut scenario)
+            );
+            transfer::public_transfer(coin, PAYER);
+            ts::return_shared(nacct);
         };
         ts::end(scenario);
     }

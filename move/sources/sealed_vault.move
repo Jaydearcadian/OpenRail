@@ -26,6 +26,7 @@ module open_rails::sealed_vault {
     use sui::sui::SUI;
     use open_rails::paycard_v1;
     use open_rails::events;
+    use open_rails::nonce_account::{Self, NonceAccount};
 
     // --- Errors ---
     const EVaultAlreadyClaimed: u64 = 201;
@@ -57,8 +58,10 @@ module open_rails::sealed_vault {
         duration_seconds: u64,
         start_timestamp: u64,             // 0 = dynamic; non-zero = payer-fixed
         recovery_target: address,
-        nonce: u64,                       // replay protection — unique per vault
+        nonce: u64,                       // V1.2: nonce_value consumed from the payer's lane
+        nonce_channel: u64,               // V1.2: payer nonce lane this open advanced
         curve: u8,                        // CURVE_ED25519 = 0, CURVE_SECP256K1 = 1
+        metadata_hash: vector<u8>,        // V1.2: canonical product/invoice terms hash (empty = none)
         status: u8,
     }
 
@@ -69,6 +72,9 @@ module open_rails::sealed_vault {
     /// to disable Tier-2 dispensing (recipient supplies their own gas). When T = SUI,
     /// the SDK splits a distinct gas coin object before calling — funding_coin and
     /// gas_coin must be separate objects.
+    /// V1.2: the payer (sender) consumes their nonce lane at vault creation. `nonce` is the
+    /// lane's expected next value; `metadata_hash` binds canonical product/invoice terms.
+    /// Both are covered by the payer signature verified at unseal (see build_vault_message).
     public entry fun create_sealed_vault<T>(
         funding_coin: &mut Coin<T>,
         allocation_amount: u64,
@@ -81,9 +87,14 @@ module open_rails::sealed_vault {
         recovery_target: address,
         nonce: u64,
         curve: u8,
+        nonce_account: &mut NonceAccount,
+        nonce_channel: u64,
+        metadata_hash: vector<u8>,
         ctx: &mut TxContext
     ) {
         let payer = tx_context::sender(ctx);
+        nonce_account::verify_and_consume(nonce_account, payer, nonce_channel, nonce);
+
         let pool = balance::split(coin::balance_mut(funding_coin), allocation_amount);
         let gas_reserve = balance::split(coin::balance_mut(gas_coin), gas_amount);
 
@@ -101,7 +112,9 @@ module open_rails::sealed_vault {
             start_timestamp,
             recovery_target,
             nonce,
+            nonce_channel,
             curve,
+            metadata_hash,
             status: STATUS_SEALED,
         };
 
@@ -154,6 +167,9 @@ module open_rails::sealed_vault {
             vault.duration_seconds,
             vault.recovery_target,
             blob_id,
+            vault.metadata_hash,
+            vault.nonce_channel,
+            vault.nonce,
             ctx
         );
 
@@ -192,7 +208,9 @@ module open_rails::sealed_vault {
             start_timestamp: _,
             recovery_target: _,
             nonce: _,
+            nonce_channel: _,
             curve: _,
+            metadata_hash: _,
             status: _,
         } = vault;
 
@@ -221,6 +239,8 @@ module open_rails::sealed_vault {
     public fun get_pool<T>(vault: &SealedVault<T>): u64            { balance::value(&vault.allocation_pool) }
     public fun get_gas_reserve<T>(vault: &SealedVault<T>): u64     { balance::value(&vault.gas_reserve) }
     public fun get_nonce<T>(vault: &SealedVault<T>): u64           { vault.nonce }
+    public fun get_nonce_channel<T>(vault: &SealedVault<T>): u64   { vault.nonce_channel }
+    public fun get_metadata_hash<T>(vault: &SealedVault<T>): vector<u8> { vault.metadata_hash }
     public fun get_curve<T>(vault: &SealedVault<T>): u8            { vault.curve }
     public fun get_start_timestamp<T>(vault: &SealedVault<T>): u64 { vault.start_timestamp }
     public fun status_sealed(): u8    { STATUS_SEALED }
@@ -231,8 +251,10 @@ module open_rails::sealed_vault {
 
     /// Canonical message bytes signed by the payer for vault authorization.
     /// Must match the SDK's buildVaultMessage() function exactly.
-    /// Format: payer_pubkey || allocation_amount || gas_amount || max_rate
-    ///         || duration || start_timestamp || recovery_target || nonce || curve
+    /// V1.2 format (nonce_channel + metadata_hash appended at the end):
+    ///   payer_pubkey || allocation_amount || gas_amount || max_rate || duration
+    ///   || start_timestamp || recovery_target || nonce || curve
+    ///   || nonce_channel || metadata_hash
     fun build_vault_message<T>(vault: &SealedVault<T>): vector<u8> {
         let mut msg = vector::empty<u8>();
         vector::append(&mut msg, vault.payer_pubkey);
@@ -244,6 +266,8 @@ module open_rails::sealed_vault {
         vector::append(&mut msg, bcs::to_bytes(&vault.recovery_target));
         vector::append(&mut msg, bcs::to_bytes(&vault.nonce));
         vector::push_back(&mut msg, vault.curve);
+        vector::append(&mut msg, bcs::to_bytes(&vault.nonce_channel));
+        vector::append(&mut msg, vault.metadata_hash);
         msg
     }
 }
