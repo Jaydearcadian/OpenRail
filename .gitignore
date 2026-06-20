@@ -2,3 +2,4 @@ node_modules/
 dist/
 move/build/
 OPENRAILS_PRIORITY.md
+*:Zone.Identifier
