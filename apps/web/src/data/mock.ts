@@ -43,6 +43,17 @@ export interface Receipt {
   residual: string;
   digest: string;
   label: string;
+  /* enriched detail (present from live Worker + mock fixtures) */
+  paycardId?: string;
+  payer?: string;
+  recipient?: string;
+  initial?: string;
+  paidMist?: string;
+  residualMist?: string;
+  initialMist?: string;
+  closedAt?: string;
+  txDigest?: string;
+  explorerHref?: string;
 }
 
 export interface AssetBalance {
@@ -171,6 +182,16 @@ export const receipts: Receipt[] = [
     paid: "0.1050 SUI",
     residual: "0.0000 SUI",
     digest: "C5As...Lsmo",
+    paycardId: "0x41ee...a77b",
+    payer: "0x3056...d993",
+    recipient: "0x41ee...a77b",
+    initial: "0.1050 SUI",
+    paidMist: "105000000",
+    residualMist: "0",
+    initialMist: "105000000",
+    closedAt: "2m ago",
+    txDigest: "C5AsLsmo",
+    explorerHref: "https://suiexplorer.com/txblock/C5AsLsmo?network=testnet",
   },
   {
     id: "evt-1",
@@ -179,6 +200,16 @@ export const receipts: Receipt[] = [
     paid: "0.0892 SUI",
     residual: "0.0108 SUI",
     digest: "Fruq...EpSM",
+    paycardId: "0x6db7...990a",
+    payer: "0x3056...d993",
+    recipient: "0x6db7...990a",
+    initial: "0.1000 SUI",
+    paidMist: "89200000",
+    residualMist: "10800000",
+    initialMist: "100000000",
+    closedAt: "14m ago",
+    txDigest: "FruqEpSM",
+    explorerHref: "https://suiexplorer.com/txblock/FruqEpSM?network=testnet",
   },
   {
     id: "evt-2",
@@ -187,6 +218,16 @@ export const receipts: Receipt[] = [
     paid: "0.0000 SUI",
     residual: "0.0500 SUI",
     digest: "AuvE...vRge",
+    paycardId: "0x9a31...e015",
+    payer: "0xf2da...58cc",
+    recipient: "0x9a31...e015",
+    initial: "0.0500 SUI",
+    paidMist: "0",
+    residualMist: "50000000",
+    initialMist: "50000000",
+    closedAt: "1h ago",
+    txDigest: "AuvEvRge",
+    explorerHref: "https://suiexplorer.com/txblock/AuvEvRge?network=testnet",
   },
 ];
 

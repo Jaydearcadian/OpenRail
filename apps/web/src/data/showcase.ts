@@ -114,8 +114,17 @@ function streamReceiptLabel(receipt?: OpenRailsReceiptRecord) {
   return receipt ? receiptType(receipt) : "pending receipt";
 }
 
+function addMist(a?: string, b?: string) {
+  try {
+    return (BigInt(a ?? "0") + BigInt(b ?? "0")).toString();
+  } catch {
+    return "0";
+  }
+}
+
 function mapReceipt(receipt: OpenRailsReceiptRecord): Receipt {
   const digest = receiptDigest(receipt);
+  const initialMist = receipt.initialAllocation ?? addMist(receipt.totalPaidToRecipient, receipt.residualReturnedToPayer);
 
   return {
     id: `${digest}:${receipt.eventSeq}`,
@@ -124,6 +133,16 @@ function mapReceipt(receipt: OpenRailsReceiptRecord): Receipt {
     paid: formatMist(receipt.totalPaidToRecipient),
     residual: formatMist(receipt.residualReturnedToPayer),
     digest: shorten(digest),
+    paycardId: shorten(receipt.paycardId),
+    payer: shorten(receipt.payer),
+    recipient: shorten(receipt.recipient),
+    initial: formatMist(initialMist),
+    paidMist: receipt.totalPaidToRecipient,
+    residualMist: receipt.residualReturnedToPayer,
+    initialMist,
+    closedAt: formatAsOf(receipt.closedAtSeconds),
+    txDigest: digest,
+    explorerHref: `https://suiexplorer.com/txblock/${digest}?network=testnet`,
   };
 }
 

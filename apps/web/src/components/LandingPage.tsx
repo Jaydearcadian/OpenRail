@@ -1,202 +1,237 @@
+import { useEffect, useState } from "react";
 import { cockpitProof, mockDataMeta, proofLinks, proofStats } from "../data/mock";
 
 interface LandingPageProps {
   onLaunch: () => void;
 }
 
+const PACKAGE_HREF =
+  "https://suiexplorer.com/object/0x7cb4ca17166b7999223d665db2e43991288b1fd8466b930e4c2a345e847aaf55?network=testnet";
+const PROOF_HREF = proofLinks[0]?.href ?? PACKAGE_HREF;
+
 const navItems = [
-  { label: "Product", href: "#product" },
-  { label: "Protocol", href: "#how" },
-  { label: "Receipts", href: "#receipts" },
-  { label: "Gateway", href: "#gateway" },
+  { label: "How it works", href: "#how" },
+  { label: "Primitives", href: "#primitives" },
+  { label: "Use cases", href: "#usecases" },
   { label: "Proof", href: "#proof" },
-  { label: "Dashboard", href: "#dashboard" },
 ];
 
-export function LandingPage({ onLaunch }: LandingPageProps) {
-  return (
-    <main className="landing-page">
-      <div className="landing-bg" aria-hidden="true" />
+const ribbonSteps = [
+  { ri: "i", title: "Intent", copy: "You sign exactly what's authorized — terms, rate, and allocation." },
+  { ri: "ii", title: "Channel", copy: "The intent opens a bounded Paycard channel on Sui." },
+  { ri: "iii", title: "Accrual", copy: "Value flows by time × rate, projected live by the gateway." },
+  { ri: "iv", title: "STN-Delta", copy: "Earned and residual route automatically — nothing is wasted." },
+  { ri: "v", title: "Receipt", copy: "A terminal SettlementReceipt proves the on-chain outcome." },
+];
 
-      <nav className="landing-nav" aria-label="Landing navigation">
-        <a className="brand-lockup" href="#top" aria-label="OpenRails home">
-          <span className="brand-glyph">OR</span>
-          <span className="brand-mark">OpenRails</span>
+const primitives = [
+  { ic: "C", tone: "clay", name: "RailsCard", copy: "An outbound funded grant. A sealed link the recipient unseals into a bounded channel.", ex: "grants · allowances · agent access" },
+  { ic: "F", tone: "sage", name: "RailsFlow", copy: "An inbound invoice. Request payment under signed terms, claimed over elapsed time.", ex: "invoices · subscriptions · checkout" },
+  { ic: "P", tone: "sky", name: "Paycard channel", copy: "The on-chain pipe. Value accrues lazily and can never drain past its allocation.", ex: "bounded · lazy · capital-safe" },
+  { ic: "R", tone: "plum", name: "STN-Delta receipt", copy: "Zero-waste settlement: earned + residual = initial. Proof of what paid and what returned.", ex: "depleted · expired · cancelled" },
+];
+
+const useCases = [
+  { uic: "i", title: "Agent compute", copy: "Grant an AI agent a bounded compute allowance that streams as it works." },
+  { uic: "ii", title: "AI usage invoices", copy: "Bill metered inference over elapsed time, settled by receipt." },
+  { uic: "iii", title: "Creator access", copy: "Subscriptions and access passes that flow while they're active." },
+  { uic: "iv", title: "Pay-over-time", copy: "Checkout where value is claimed gradually, not all at once." },
+];
+
+const trustRows = [
+  { ic: "🌿", lead: "Testnet-proven:", body: "the V1.1 package, live channels, claim, STN-Delta settlement and receipts all run on Sui testnet." },
+  { ic: "🟠", lead: "Simulated here:", body: "wallet connect and live submission are mocked in this read-only dashboard — no signatures, no writes." },
+  { ic: "💧", lead: "Projections are gentle:", body: "signed gateway heartbeats estimate accrual for UX. The SettlementReceipt is the truth." },
+];
+
+function Wave() {
+  return (
+    <div className="wave" aria-hidden="true">
+      <svg viewBox="0 0 400 54" preserveAspectRatio="none">
+        <path d="M0 34 Q50 14 100 30 T200 28 T300 32 T400 26 V54 H0 Z" fill="oklch(0.64 0.12 45 / 0.5)" />
+        <path d="M0 40 Q50 24 100 36 T200 34 T300 38 T400 32 V54 H0 Z" fill="oklch(0.62 0.08 232 / 0.32)" />
+      </svg>
+    </div>
+  );
+}
+
+export function LandingPage({ onLaunch }: LandingPageProps) {
+  const [scrolled, setScrolled] = useState(false);
+  const [sheetOpen, setSheetOpen] = useState(false);
+
+  useEffect(() => {
+    const onScroll = () => setScrolled(window.scrollY > 12);
+    onScroll();
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => window.removeEventListener("scroll", onScroll);
+  }, []);
+
+  useEffect(() => {
+    let val = 0.009612;
+    const el = document.getElementById("heroLiveValue");
+    const iv = setInterval(() => {
+      val += 0.000043 + Math.random() * 0.000015;
+      if (el) el.textContent = val.toFixed(6);
+    }, 900);
+    return () => clearInterval(iv);
+  }, []);
+
+  useEffect(() => {
+    const els = Array.from(document.querySelectorAll<HTMLElement>(".reveal"));
+    if (!("IntersectionObserver" in window)) {
+      els.forEach((el) => el.classList.add("in"));
+      return;
+    }
+    const obs = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          if (entry.isIntersecting) {
+            entry.target.classList.add("in");
+            obs.unobserve(entry.target);
+          }
+        });
+      },
+      { threshold: 0.12, rootMargin: "0px 0px -40px 0px" },
+    );
+    els.forEach((el) => obs.observe(el));
+    return () => obs.disconnect();
+  }, []);
+
+  const closeSheet = () => setSheetOpen(false);
+
+  return (
+    <main className="land">
+      <nav className={`lnav ${scrolled ? "scrolled" : ""}`} aria-label="Primary">
+        <a className="brand" href="#top" aria-label="OpenRails home">
+          <span className="mark" aria-hidden="true" />
+          OpenRails
         </a>
-        <div className="nav-links">
+        <div className="lnav-links">
           {navItems.map((item) => (
             <a key={item.href} href={item.href}>{item.label}</a>
           ))}
         </div>
-        <div className="nav-actions">
-          <a
-            className="secondary-nav"
-            href="https://suiexplorer.com/object/0x1809f38156fb5f2724708523ebcce13f04c8bda613c9e9b87ed8ace9b632e627?network=testnet"
-            target="_blank"
-            rel="noreferrer"
-          >
-            View proof
-          </a>
-          <button type="button" onClick={onLaunch}>Open live dashboard</button>
+        <div className="lnav-right">
+          <a className="secondary" href={PROOF_HREF} target="_blank" rel="noreferrer">View testnet proof</a>
+          <button type="button" className="btn btn-primary" onClick={onLaunch}>Open dashboard</button>
+          <button type="button" className="lnav-burger" aria-label="Open menu" onClick={() => setSheetOpen(true)}>☰</button>
         </div>
       </nav>
 
-      <section id="top" className="hero hero-redesign">
-        <div className="hero-copy-block">
-          <p className="eyebrow">OpenRails V1 clearing cockpit</p>
-          <h1>Signed rails for private Sui payment streams.</h1>
-          <p className="hero-copy">
-            OpenRails converts payment links into encrypted Permission Envelopes, sealed
-            Sui funding objects, gateway-projected streams, and terminal settlement receipts.
-            This cockpit keeps read-only Worker data and every proof boundary visible.
-          </p>
-          <div className="protocol-line" aria-label="OpenRails protocol sequence">
-            <span>sign</span>
-            <i aria-hidden="true" />
-            <span>seal</span>
-            <i aria-hidden="true" />
-            <span>stream</span>
-            <i aria-hidden="true" />
-            <span>settle</span>
-            <i aria-hidden="true" />
-            <span>verify</span>
-          </div>
-          <div className="hero-actions">
-            <button type="button" onClick={onLaunch}>Open live dashboard</button>
-            <a
-              href="https://suiexplorer.com/object/0x1809f38156fb5f2724708523ebcce13f04c8bda613c9e9b87ed8ace9b632e627?network=testnet"
-              target="_blank"
-              rel="noreferrer"
-            >
-              View testnet proof
-            </a>
-          </div>
-          <p className="prototype-note">
-            Read-only UI preview. {mockDataMeta.liveIntegrations}.
-          </p>
+      <div className={`lnav-sheet ${sheetOpen ? "open" : ""}`}>
+        <div className="sheet-top">
+          <a className="brand" href="#top" onClick={closeSheet}><span className="mark" aria-hidden="true" />OpenRails</a>
+          <button type="button" className="lnav-burger" aria-label="Close menu" onClick={closeSheet}>×</button>
         </div>
+        <nav aria-label="Mobile">
+          {navItems.map((item) => (
+            <a key={item.href} href={item.href} onClick={closeSheet}>{item.label}</a>
+          ))}
+        </nav>
+        <button type="button" className="btn btn-primary" onClick={() => { closeSheet(); onLaunch(); }}>Open dashboard</button>
+      </div>
 
-        <aside className="hero-proof-object" aria-labelledby="hero-proof-title">
-          <span className="proof-object-kicker">Audit object</span>
-          <h2 id="hero-proof-title">RailsCard proof packet</h2>
-          <dl>
-            <div>
-              <dt>Envelope</dt>
-              <dd>{cockpitProof.envelope}</dd>
+      <section id="top" className="hero">
+        <div>
+          <span className="chip c-testnet"><span className="acc-dot" />V1.1 · Live on Sui Testnet</span>
+          <h1 className="serif">Money that <span className="it">flows</span>, with proof of where it went.</h1>
+          <p className="hero-copy">
+            OpenRails turns a payment link into a bounded Paycard channel on Sui. Value accrues by
+            time × rate, can never drain past its allocation, and closes with an STN-Delta receipt
+            that proves exactly what was paid and what came back.
+          </p>
+          <div className="hero-actions">
+            <button type="button" onClick={onLaunch}>Open the dashboard</button>
+            <a href="#how">How it works</a>
+          </div>
+          <p className="prototype-note">Read-only UI preview. {mockDataMeta.liveIntegrations}.</p>
+        </div>
+        <div className="hero-art">
+          <div className="flowcard">
+            <div className="ft">RailsCard · channel {cockpitProof.paycardId}</div>
+            <div className="fb">◎ <span id="heroLiveValue">0.009612</span><small> SUI</small></div>
+            <Wave />
+            <div className="meta">
+              <span>+ 0.00005 SUI / sec</span>
+              <span>64% of 0.015</span>
             </div>
-            <div>
-              <dt>Walrus blob</dt>
-              <dd>{cockpitProof.walrusBlob}</dd>
-            </div>
-            <div>
-              <dt>Paycard</dt>
-              <dd>{cockpitProof.paycardId}</dd>
-            </div>
-            <div>
-              <dt>Receipt digest</dt>
-              <dd>{cockpitProof.receiptDigest}</dd>
-            </div>
-          </dl>
-          <p>{cockpitProof.boundary}</p>
-        </aside>
+          </div>
+          <div className="mini a"><span className="dot" style={{ background: "var(--sage)" }} />Receipt verified</div>
+          <div className="mini b"><span className="dot" style={{ background: "var(--sky)" }} />Encrypted link</div>
+        </div>
       </section>
 
-      <section className="proof-strip" aria-label="OpenRails V1 proof points">
-        {proofStats.map((item) => (
-          <span key={item}>{item}</span>
+      <section id="how" className="ribbon reveal" aria-label="How it works">
+        {ribbonSteps.map((step) => (
+          <div key={step.ri} className="rstep">
+            <div className="ri">{step.ri}</div>
+            <h4>{step.title}</h4>
+            <p>{step.copy}</p>
+          </div>
         ))}
       </section>
 
-      <section id="product" className="landing-section product-grid" aria-labelledby="product-title">
-        <div className="section-copy">
-          <p className="eyebrow">Product</p>
-          <h2 id="product-title">Payment links with real settlement boundaries.</h2>
-          <p>
-            The old payment link is a static URL. OpenRails makes it signed, encrypted,
-            streamable, and receipt-backed, so payers and merchants can reason about what
-            is funded, what is projected, and what finally settled.
-          </p>
+      <section id="primitives">
+        <div className="shead reveal">
+          <span className="eyebrow">Primitives</span>
+          <h2 className="serif">Two kinds of links.<br />One trail of <span className="it">proof.</span></h2>
+          <p>Whether you send an allowance or bill a customer, every channel carries signed terms and a value-conserving receipt.</p>
         </div>
-        <div className="primitive-grid">
-          <article>
-            <span>01</span>
-            <h3>RailsCard</h3>
-            <p>Outbound grants backed by a SealedVault and private link metadata.</p>
-          </article>
-          <article>
-            <span>02</span>
-            <h3>RailsFlow</h3>
-            <p>Merchant invoice flow with signed terms, funding state, and payout intent.</p>
-          </article>
-          <article>
-            <span>03</span>
-            <h3>Gateway</h3>
-            <p>Off-chain stream projections that stay below terminal on-chain receipts.</p>
-          </article>
-          <article>
-            <span>04</span>
-            <h3>Receipts</h3>
-            <p>Final accounting records for depleted, expired, or cancelled streams.</p>
-          </article>
+        <div className="prims reveal">
+          {primitives.map((p) => (
+            <article key={p.name} className="prim">
+              <div className="ic" style={{ background: `var(--${p.tone}-soft)`, color: `var(--${p.tone})` }}>{p.ic}</div>
+              <h3 className="serif">{p.name}</h3>
+              <p>{p.copy}</p>
+              <div className="ex">{p.ex}</div>
+            </article>
+          ))}
         </div>
       </section>
 
-      <section id="how" className="landing-section rail-flow" aria-labelledby="how-title">
-        <div>
-          <p className="eyebrow">Protocol</p>
-          <h2 id="how-title">Sign, seal, stream, settle, verify.</h2>
+      <section>
+        <div className="shead reveal">
+          <span className="eyebrow">Trust boundary</span>
+          <h2 className="serif">What's real, <span className="it">honestly.</span></h2>
         </div>
-        <ol className="steps">
-          <li><strong>Sign</strong><span>Bind terms into a canonical permission envelope.</span></li>
-          <li><strong>Seal</strong><span>Fund a Sui SealedVault and encrypt link metadata for Walrus.</span></li>
-          <li><strong>Stream</strong><span>Use signed gateway heartbeats for live accrual projections.</span></li>
-          <li><strong>Settle</strong><span>Verify terminal on-chain receipts instead of trusting UI balances.</span></li>
-          <li><strong>Verify</strong><span>Trace digest, blob, paycard, and receipt IDs through the proof center.</span></li>
-        </ol>
+        <div className="trust-card reveal">
+          {trustRows.map((row) => (
+            <div key={row.lead} className="row">
+              <span className="ic" aria-hidden="true">{row.ic}</span>
+              <div><b>{row.lead}</b> {row.body}</div>
+            </div>
+          ))}
+        </div>
       </section>
 
-      <section id="gateway" className="landing-section demo-panel" aria-labelledby="gateway-title">
-        <div>
-          <p className="eyebrow">Gateway</p>
-          <h2 id="gateway-title">Projected streams below authoritative settlement.</h2>
-          <p>
-            Gateway heartbeats make active rails legible for operators and merchants.
-            They remain explicitly below terminal SettlementReceipt events.
-          </p>
+      <section id="usecases">
+        <div className="shead reveal">
+          <span className="eyebrow">Use cases</span>
+          <h2 className="serif">Rails for the <span className="it">machine economy.</span></h2>
+          <p>Bounded, streaming payments for agents, APIs, and creators — settled by receipt, not trust.</p>
         </div>
-        <button type="button" onClick={onLaunch}>Open live dashboard</button>
+        <div className="usecases reveal">
+          {useCases.map((u) => (
+            <article key={u.title} className="usecase">
+              <div className="uic">{u.uic}</div>
+              <h4>{u.title}</h4>
+              <p>{u.copy}</p>
+            </article>
+          ))}
+        </div>
       </section>
 
-      <section id="receipts" className="landing-section rail-flow receipts-narrative" aria-labelledby="receipts-title">
-        <div>
-          <p className="eyebrow">Receipts</p>
-          <h2 id="receipts-title">One event closes the accounting loop.</h2>
+      <section id="proof">
+        <div className="shead reveal">
+          <span className="eyebrow">Proof</span>
+          <h2 className="serif">Testnet events exist. The UI stays <span className="it">honest.</span></h2>
         </div>
-        <p>
-          Depleted, expired, and cancelled streams collapse into audit-grade receipt records.
-          The dashboard reads the public Worker and labels every digest and data source
-          so finance teams can tell projection from final settlement.
-        </p>
-      </section>
-
-      <section id="dashboard" className="landing-section demo-panel" aria-labelledby="dashboard-title">
-        <div>
-          <p className="eyebrow">Dashboard</p>
-          <h2 id="dashboard-title">A cockpit for rails, proofs, receipts, and trust boundaries.</h2>
-          <p>
-            Review lifecycle state, selected stream details, proof links, and Worker data
-            states without connecting a wallet or submitting Sui writes.
-          </p>
+        <div className="proof-strip reveal">
+          {proofStats.map((item) => (
+            <span key={item}>{item}</span>
+          ))}
         </div>
-        <button type="button" onClick={onLaunch}>Launch cockpit</button>
-      </section>
-
-      <section id="proof" className="landing-section proof-panel" aria-labelledby="proof-title">
-        <div>
-          <p className="eyebrow">Proof</p>
-          <h2 id="proof-title">Testnet events exist. The UI stays honest.</h2>
-        </div>
-        <div className="proof-links">
+        <div className="proof-links reveal">
           {proofLinks.map((proof) => (
             proof.href ? (
               <a key={proof.label} href={proof.href} target="_blank" rel="noreferrer">
@@ -206,56 +241,47 @@ export function LandingPage({ onLaunch }: LandingPageProps) {
             ) : (
               <span key={proof.label}>
                 <strong>{proof.label}</strong>
-                <small>{proof.detail}</small>
+                <span>{proof.detail}</span>
               </span>
             )
           ))}
         </div>
       </section>
 
-      <footer id="developers" className="site-footer">
-        <div className="footer-brand">
-          <span className="brand-glyph">OR</span>
-          <h2>OpenRails</h2>
-          <p>Encrypted, signed payment links that stream on Sui and settle with verifiable receipts.</p>
-          <div>
-            <span className="footer-badge">Sui Testnet</span>
-            <span className="footer-badge">Read-only UI</span>
+      <section className="lcta reveal">
+        <h2 className="serif">Watch a rail <span className="it">flow.</span></h2>
+        <p>Step inside the cockpit — live channels, gentle projections, and receipts you can verify.</p>
+        <button type="button" className="btn btn-primary" onClick={onLaunch}>Open the dashboard →</button>
+      </section>
+
+      <footer className="land-footer">
+        <div className="footer-cols">
+          <div className="footer-brand">
+            <a className="brand" href="#top"><span className="mark" aria-hidden="true" />OpenRails</a>
+            <p>Streaming payment rails on Sui. Bounded Paycard channels that accrue by time × rate and close with verifiable STN-Delta receipts.</p>
+            <div className="footer-badges">
+              <span className="chip c-testnet"><span className="dot" style={{ background: "var(--sage)" }} />Sui Testnet</span>
+              <span className="chip c-mock"><span className="dot" style={{ background: "var(--clay)" }} />Read-only UI</span>
+            </div>
           </div>
-        </div>
-        <div className="footer-columns">
-          <div>
-            <h3>Product</h3>
-            <a href="#product">RailsCard grants</a>
-            <a href="#product">RailsFlow invoices</a>
-            <a href="#product">Gateway projections</a>
-            <a href="#product">Terminal receipts</a>
+          <div className="footer-col">
+            <h5>Product</h5>
+            <a href="#how">How it works</a>
+            <a href="#primitives">Primitives</a>
+            <a href="#usecases">Use cases</a>
+            <button type="button" className="footer-linkbtn" onClick={onLaunch} style={{ color: "inherit", textAlign: "left", padding: "5px 0", fontSize: 14 }}>Open dashboard</button>
           </div>
-          <div>
-            <h3>Proof</h3>
-            <a href="#proof">Testnet mint</a>
-            <a href="#proof">Encrypted Walrus link</a>
-            <a href="#proof">Settlement receipt</a>
-            <a href="#proof">Receipt API in dashboard</a>
-          </div>
-          <div>
-            <h3>Build</h3>
-            <span>SDK helpers</span>
-            <span>Gateway store</span>
-            <span>Receipt API</span>
-            <span>Contracts on testnet</span>
-          </div>
-          <div>
-            <h3>Status</h3>
-            <span>Wallet not connected</span>
-            <span>No live writes</span>
-            <span>Live Worker reads</span>
-            <span>Do not send mainnet funds</span>
+          <div className="footer-col">
+            <h5>Proof &amp; Protocol</h5>
+            <a href={PACKAGE_HREF} target="_blank" rel="noreferrer">Package on Sui Explorer</a>
+            {proofLinks.map((proof) => (
+              proof.href ? <a key={proof.label} href={proof.href} target="_blank" rel="noreferrer">{proof.label}</a> : null
+            ))}
           </div>
         </div>
         <div className="footer-bottom">
-          <span>OpenRails V1 testnet prototype.</span>
-          <span>Private links. Gateway projections. Terminal receipts.</span>
+          <span>Built for Sui · V1.1 testnet prototype · © 2026</span>
+          <span>Testnet only — do not send mainnet funds.</span>
         </div>
       </footer>
     </main>
