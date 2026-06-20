@@ -5,4 +5,17 @@ compatibility_date = "2026-06-18"
 [vars]
 SUI_NETWORK = "testnet"
 SUI_RPC_URL = "https://fullnode.testnet.sui.io:443"
-OPENRAILS_PACKAGE_ID = "0xfaf26d6a2028446fa61f4171c27f26209dc7951ea8634dc8ce88e1fa125dacf1"
+OPENRAILS_PACKAGE_ID = "0x7cb4ca17166b7999223d665db2e43991288b1fd8466b930e4c2a345e847aaf55"
+
+# Set deployment secrets outside git:
+# wrangler secret put GATEWAY_PUBLIC_KEY_HEX
+# wrangler secret put ADMIN_TOKEN
+
+[triggers]
+crons = ["*/5 * * * *"]
+
+[[d1_databases]]
+binding = "RECEIPT_DB"
+database_name = "openrails-receipt-api"
+database_id = "4fc647eb-95b2-4d84-8842-d7a7fdb59080"
+migrations_dir = "migrations"

@@ -2,11 +2,30 @@ import {
   SETTLEMENT_TYPE_CANCELLED,
   SETTLEMENT_TYPE_DEPLETED,
   SETTLEMENT_TYPE_EXPIRED,
-  SuiClient,
+  type SettlementType,
+} from "@openrails/sdk/worker";
+import {
+  type SignedGatewayEvent,
+  verifyGatewayEvent,
+} from "@openrails/sdk/worker";
+import {
   getSettlementReceiptByPaycardId,
   querySettlementReceipts,
-  type SettlementType,
-} from "@openrails/sdk";
+} from "@openrails/sdk/worker";
+import {
+  buildOpenRailsProof,
+  gatewayEventMetadata,
+  type OpenRailsProofStreamState,
+} from "@openrails/sdk/worker";
+import { SuiClient } from "@mysten/sui/client";
+import { runReceiptIndexer } from "./indexer.js";
+import {
+  createD1ReceiptStorage,
+  stableJson,
+  type PaycardState,
+  type ReceiptStorage,
+  type StoredGatewayEvent,
+} from "./storage.js";
 
 const RPC_URLS = {
   testnet: "https://fullnode.testnet.sui.io:443",
@@ -20,6 +39,10 @@ export interface ReceiptApiEnv {
   SUI_NETWORK?: string;
   SUI_RPC_URL?: string;
   OPENRAILS_PACKAGE_ID?: string;
+  GATEWAY_PUBLIC_KEY_HEX?: string;
+  ADMIN_TOKEN?: string;
+  RECEIPT_DB?: D1Database;
+  RECEIPT_STORAGE?: ReceiptStorage;
 }
 
 interface ReceiptApiConfig {
@@ -33,8 +56,8 @@ type SdkReceiptClient = Parameters<typeof querySettlementReceipts>[0]["client"];
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Methods": "GET, OPTIONS",
-  "Access-Control-Allow-Headers": "Content-Type",
+  "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+  "Access-Control-Allow-Headers": "Authorization, Content-Type, X-Admin-Token",
 } as const;
 
 function jsonResponse(body: unknown, status = 200): Response {
@@ -102,6 +125,12 @@ function parseCursor(url: URL): EventId | null {
   return { txDigest, eventSeq };
 }
 
+function parseEventCursor(url: URL): string | null {
+  const value = url.searchParams.get("cursor");
+  if (value === null || value === "") return null;
+  return value;
+}
+
 function parseSettlementType(value: string | null): SettlementType | undefined {
   if (value === null || value === "") return undefined;
   if (value === "depleted" || value === "0") return SETTLEMENT_TYPE_DEPLETED;
@@ -123,9 +152,113 @@ function createClient(config: ReceiptApiConfig, override?: ReceiptClient): Recei
     : new SuiClient({ url: config.rpcUrl });
 }
 
+function getStorage(env: ReceiptApiEnv): ReceiptStorage | null {
+  if (env.RECEIPT_STORAGE) return env.RECEIPT_STORAGE;
+  if (env.RECEIPT_DB) return createD1ReceiptStorage(env.RECEIPT_DB);
+  return null;
+}
+
+function getAdminToken(request: Request): string | null {
+  const auth = request.headers.get("Authorization");
+  if (auth?.startsWith("Bearer ")) return auth.slice("Bearer ".length);
+  return request.headers.get("X-Admin-Token");
+}
+
+function requireConfiguredStorage(env: ReceiptApiEnv): ReceiptStorage {
+  const storage = getStorage(env);
+  if (!storage) throw new Error("RECEIPT_DB must be configured.");
+  return storage;
+}
+
+function isNonEmptyString(value: unknown): value is string {
+  return typeof value === "string" && value.length > 0;
+}
+
+function isSafeNonNegativeInteger(value: unknown): value is number {
+  return typeof value === "number" && Number.isSafeInteger(value) && value >= 0;
+}
+
+function isSignedGatewayEvent(value: unknown): value is SignedGatewayEvent {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const event = value as Record<string, unknown>;
+  if (
+    event.schemaVersion !== "1" ||
+    !isNonEmptyString(event.eventId) ||
+    !isNonEmptyString(event.eventType) ||
+    !isNonEmptyString(event.paycardId) ||
+    !isSafeNonNegativeInteger(event.timestamp) ||
+    !isSafeNonNegativeInteger(event.sequence) ||
+    !isNonEmptyString(event.signature)
+  ) {
+    return false;
+  }
+
+  if (event.eventType === "stream.accrual_heartbeat") {
+    return (
+      isNonEmptyString(event.accruedSinceCheckpoint) &&
+      isNonEmptyString(event.projectedBalance) &&
+      typeof event.isExhausted === "boolean"
+    );
+  }
+  if (event.eventType === "channel.buffer_low") {
+    return isNonEmptyString(event.projectedBalance) && isNonEmptyString(event.threshold);
+  }
+  if (event.eventType === "channel.terminated") {
+    return (
+      isSafeNonNegativeInteger(event.settlementType) &&
+      isNonEmptyString(event.totalPaidToRecipient) &&
+      isNonEmptyString(event.residualReturnedToPayer) &&
+      isSafeNonNegativeInteger(event.closedAtSeconds)
+    );
+  }
+  return false;
+}
+
+async function readGatewayEvent(request: Request): Promise<SignedGatewayEvent> {
+  let body: unknown;
+  try {
+    body = await request.json();
+  } catch {
+    throw new Error("Request body must be valid JSON.");
+  }
+  if (!isSignedGatewayEvent(body)) {
+    throw new Error("Request body must be a signed gateway event.");
+  }
+  if (!isHexId(body.paycardId)) {
+    throw new Error("paycardId must be a 0x-prefixed hex ID.");
+  }
+  return body;
+}
+
+function storedGatewayEvent(event: SignedGatewayEvent): StoredGatewayEvent {
+  return {
+    eventId: event.eventId,
+    paycardId: event.paycardId,
+    eventType: event.eventType,
+    sequence: event.sequence,
+    timestamp: event.timestamp,
+    payload: event,
+    payloadJson: stableJson(event),
+    createdAtMs: Date.now(),
+  };
+}
+
+function paycardStateFromEvent(event: SignedGatewayEvent): PaycardState {
+  return {
+    paycardId: event.paycardId,
+    latestEventId: event.eventId,
+    latestEventType: event.eventType,
+    latestSequence: event.sequence,
+    latestTimestamp: event.timestamp,
+    payload: event,
+    updatedAtMs: Date.now(),
+  };
+}
+
 async function handleListReceipts(
   url: URL,
   config: ReceiptApiConfig,
+  storage?: ReceiptStorage | null,
   clientOverride?: ReceiptClient
 ): Promise<Response> {
   const limit = parsePositiveInt(url.searchParams.get("limit"), "limit", 50, 100);
@@ -134,9 +267,7 @@ async function handleListReceipts(
     throw new Error("order must be ascending or descending.");
   }
 
-  const page = await querySettlementReceipts({
-    client: createClient(config, clientOverride) as unknown as SdkReceiptClient,
-    packageId: config.packageId,
+  const params = {
     cursor: parseCursor(url),
     limit,
     descendingOrder: order === "descending",
@@ -144,7 +275,15 @@ async function handleListReceipts(
     payer: parseOptionalHexId(url, "payer"),
     recipient: parseOptionalHexId(url, "recipient"),
     settlementType: parseSettlementType(url.searchParams.get("settlementType")),
-  });
+  };
+
+  const page = storage
+    ? await storage.listSettlementReceipts(params)
+    : await querySettlementReceipts({
+        client: createClient(config, clientOverride) as unknown as SdkReceiptClient,
+        packageId: config.packageId,
+        ...params,
+      });
 
   return jsonResponse({
     data: page.data,
@@ -157,24 +296,166 @@ async function handleGetReceipt(
   paycardId: string,
   url: URL,
   config: ReceiptApiConfig,
+  storage?: ReceiptStorage | null,
   clientOverride?: ReceiptClient
 ): Promise<Response> {
   if (!isHexId(paycardId)) {
     throw new Error("paycardId must be a 0x-prefixed hex ID.");
   }
 
-  const receipt = await getSettlementReceiptByPaycardId({
-    client: createClient(config, clientOverride) as unknown as SdkReceiptClient,
-    packageId: config.packageId,
-    paycardId,
-    limit: parsePositiveInt(url.searchParams.get("limit"), "limit", 50, 100),
-    maxPages: parsePositiveInt(url.searchParams.get("maxPages"), "maxPages", 5, 20),
-  });
+  const receipt = storage
+    ? await storage.getSettlementReceiptByPaycardId(paycardId)
+    : await getSettlementReceiptByPaycardId({
+        client: createClient(config, clientOverride) as unknown as SdkReceiptClient,
+        packageId: config.packageId,
+        paycardId,
+        limit: parsePositiveInt(url.searchParams.get("limit"), "limit", 50, 100),
+        maxPages: parsePositiveInt(url.searchParams.get("maxPages"), "maxPages", 5, 20),
+      });
 
   if (!receipt) {
     return errorResponse(404, "receipt_not_found", "No terminal receipt found for this Paycard.");
   }
   return jsonResponse({ data: receipt });
+}
+
+async function handleGatewayEvent(request: Request, env: ReceiptApiEnv): Promise<Response> {
+  const publicKey = env.GATEWAY_PUBLIC_KEY_HEX;
+  if (!publicKey) {
+    return errorResponse(500, "configuration_error", "GATEWAY_PUBLIC_KEY_HEX must be configured.");
+  }
+
+  const storage = requireConfiguredStorage(env);
+  const event = await readGatewayEvent(request);
+  const verified = await verifyGatewayEvent(event, publicKey);
+  if (!verified) {
+    return errorResponse(401, "invalid_signature", "Gateway event signature verification failed.");
+  }
+
+  const stored = storedGatewayEvent(event);
+  const result = await storage.putGatewayEvent(stored);
+  if (result.status === "conflict") {
+    return errorResponse(409, "duplicate_event_conflict", "A different event already exists for this eventId.");
+  }
+
+  let stateUpdated = false;
+  if (result.status === "inserted") {
+    stateUpdated = await storage.updatePaycardStateIfNewer(paycardStateFromEvent(event));
+  }
+
+  return jsonResponse({
+    data: {
+      eventId: event.eventId,
+      paycardId: event.paycardId,
+      stored: true,
+      duplicate: result.status === "duplicate",
+      stateUpdated,
+    },
+  }, result.status === "inserted" ? 202 : 200);
+}
+
+async function handleGetStream(paycardId: string, env: ReceiptApiEnv): Promise<Response> {
+  if (!isHexId(paycardId)) {
+    throw new Error("paycardId must be a 0x-prefixed hex ID.");
+  }
+  const state = await requireConfiguredStorage(env).getPaycardState(paycardId);
+  if (!state) {
+    return errorResponse(404, "stream_not_found", "No indexed stream state found for this Paycard.");
+  }
+  return jsonResponse({ data: state });
+}
+
+async function handleListStreamEvents(paycardId: string, url: URL, env: ReceiptApiEnv): Promise<Response> {
+  if (!isHexId(paycardId)) {
+    throw new Error("paycardId must be a 0x-prefixed hex ID.");
+  }
+  const limit = parsePositiveInt(url.searchParams.get("limit"), "limit", 50, 100);
+  const page = await requireConfiguredStorage(env).listGatewayEvents(paycardId, limit, parseEventCursor(url));
+  return jsonResponse({
+    data: page.data,
+    nextCursor: page.nextCursor,
+    hasNextPage: page.hasNextPage,
+  });
+}
+
+function proofStreamState(state: PaycardState): OpenRailsProofStreamState {
+  return {
+    paycardId: state.paycardId,
+    latestEventId: state.latestEventId,
+    latestEventType: state.latestEventType as OpenRailsProofStreamState["latestEventType"],
+    latestSequence: state.latestSequence,
+    latestTimestamp: state.latestTimestamp,
+    payload: state.payload,
+    updatedAtMs: state.updatedAtMs,
+  };
+}
+
+async function handleGetProof(
+  paycardId: string,
+  url: URL,
+  config: ReceiptApiConfig,
+  storage?: ReceiptStorage | null,
+  clientOverride?: ReceiptClient
+): Promise<Response> {
+  if (!isHexId(paycardId)) {
+    throw new Error("paycardId must be a 0x-prefixed hex ID.");
+  }
+
+  const limit = parsePositiveInt(url.searchParams.get("limit"), "limit", 10, 50);
+  const [latestStreamState, recentStreamEvents, terminalReceipt] = storage
+    ? await Promise.all([
+        storage.getPaycardState(paycardId),
+        storage.listRecentGatewayEvents(paycardId, limit),
+        storage.getSettlementReceiptByPaycardId(paycardId),
+      ])
+    : await Promise.all([
+        Promise.resolve(null),
+        Promise.resolve([]),
+        getSettlementReceiptByPaycardId({
+          client: createClient(config, clientOverride) as unknown as SdkReceiptClient,
+          packageId: config.packageId,
+          paycardId,
+          limit: parsePositiveInt(url.searchParams.get("receiptLimit"), "receiptLimit", 50, 100),
+          maxPages: parsePositiveInt(url.searchParams.get("maxPages"), "maxPages", 5, 20),
+        }),
+      ]);
+
+  if (!latestStreamState && recentStreamEvents.length === 0 && !terminalReceipt) {
+    return errorResponse(404, "proof_not_found", "No proof data found for this Paycard.");
+  }
+
+  return jsonResponse({
+    data: buildOpenRailsProof({
+      network: config.network,
+      packageId: config.packageId,
+      paycardId,
+      latestStreamState: latestStreamState ? proofStreamState(latestStreamState) : null,
+      recentStreamEvents: recentStreamEvents.map((event) =>
+        gatewayEventMetadata({
+          ...event,
+          eventType: event.eventType as OpenRailsProofStreamState["latestEventType"],
+        })
+      ),
+      terminalReceipt,
+    }),
+  });
+}
+
+async function handleRunReceiptIndexer(
+  request: Request,
+  env: ReceiptApiEnv,
+  config: ReceiptApiConfig,
+  clientOverride?: ReceiptClient
+): Promise<Response> {
+  if (!env.ADMIN_TOKEN) {
+    return errorResponse(500, "configuration_error", "ADMIN_TOKEN must be configured.");
+  }
+  if (getAdminToken(request) !== env.ADMIN_TOKEN) {
+    return errorResponse(401, "unauthorized", "Invalid admin token.");
+  }
+
+  const result = await runReceiptIndexer(config, requireConfiguredStorage(env), clientOverride);
+  return jsonResponse({ data: result });
 }
 
 export async function handleRequest(
@@ -183,8 +464,8 @@ export async function handleRequest(
   clientOverride?: ReceiptClient
 ): Promise<Response> {
   if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: corsHeaders });
-  if (request.method !== "GET") {
-    return errorResponse(405, "method_not_allowed", "Only GET is supported.");
+  if (request.method !== "GET" && request.method !== "POST") {
+    return errorResponse(405, "method_not_allowed", "Only GET and POST are supported.");
   }
 
   const url = new URL(request.url);
@@ -192,21 +473,52 @@ export async function handleRequest(
     return jsonResponse({ ok: true });
   }
 
-  let config: ReceiptApiConfig;
   try {
-    config = resolveConfig(env);
-  } catch (error) {
-    return errorResponse(500, "configuration_error", (error as Error).message);
-  }
+    if (request.method === "POST" && url.pathname === "/v1/gateway/events") {
+      return await handleGatewayEvent(request, env);
+    }
 
-  try {
+    if (request.method === "GET") {
+      const streamEventsMatch = url.pathname.match(/^\/v1\/streams\/([^/]+)\/events$/);
+      if (streamEventsMatch) {
+        return await handleListStreamEvents(decodeURIComponent(streamEventsMatch[1]), url, env);
+      }
+
+      const streamMatch = url.pathname.match(/^\/v1\/streams\/([^/]+)$/);
+      if (streamMatch) {
+        return await handleGetStream(decodeURIComponent(streamMatch[1]), env);
+      }
+    }
+
+    let config: ReceiptApiConfig;
+    try {
+      config = resolveConfig(env);
+    } catch (error) {
+      return errorResponse(500, "configuration_error", (error as Error).message);
+    }
+
+    if (request.method === "POST" && url.pathname === "/admin/index/receipts/run") {
+      return await handleRunReceiptIndexer(request, env, config, clientOverride);
+    }
+
+    if (request.method !== "GET") {
+      return errorResponse(404, "not_found", "Route not found.");
+    }
+
+    const storage = getStorage(env);
+
     if (url.pathname === "/v1/receipts") {
-      return await handleListReceipts(url, config, clientOverride);
+      return await handleListReceipts(url, config, storage, clientOverride);
+    }
+
+    const proofMatch = url.pathname.match(/^\/v1\/proofs\/([^/]+)$/);
+    if (proofMatch) {
+      return await handleGetProof(decodeURIComponent(proofMatch[1]), url, config, storage, clientOverride);
     }
 
     const match = url.pathname.match(/^\/v1\/receipts\/([^/]+)$/);
     if (match) {
-      return await handleGetReceipt(decodeURIComponent(match[1]), url, config, clientOverride);
+      return await handleGetReceipt(decodeURIComponent(match[1]), url, config, storage, clientOverride);
     }
 
     return errorResponse(404, "not_found", "Route not found.");
@@ -215,9 +527,13 @@ export async function handleRequest(
     if (
       message.includes("must be") ||
       message.includes("provided together") ||
-      message.includes("between")
+      message.includes("between") ||
+      message.includes("valid JSON")
     ) {
       return errorResponse(400, "invalid_request", message);
+    }
+    if (message.includes("RECEIPT_DB")) {
+      return errorResponse(503, "storage_unavailable", message);
     }
     return errorResponse(502, "sui_rpc_unavailable", "Unable to query Sui receipt events.");
   }
@@ -226,5 +542,11 @@ export async function handleRequest(
 export default {
   fetch(request: Request, env: ReceiptApiEnv): Promise<Response> {
     return handleRequest(request, env);
+  },
+  scheduled(_controller: ScheduledController, env: ReceiptApiEnv, ctx: ExecutionContext): void {
+    ctx.waitUntil((async () => {
+      const config = resolveConfig(env);
+      await runReceiptIndexer(config, requireConfiguredStorage(env));
+    })());
   },
 };
