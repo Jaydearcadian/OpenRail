@@ -1,0 +1,215 @@
+{
+  "schemaVersion": "1",
+  "kind": "openrails.v1_1.showcase",
+  "network": "testnet",
+  "packageId": "0x7cb4ca17166b7999223d665db2e43991288b1fd8466b930e4c2a345e847aaf55",
+  "createdAt": "2026-06-19T11:55:00.698Z",
+  "operators": {
+    "payer": "0xf3263408543fac28fe935e62a54b1f5d34b1fef2e0b0226ea628a68bcd78a3c1",
+    "recipient": "0xf3263408543fac28fe935e62a54b1f5d34b1fef2e0b0226ea628a68bcd78a3c1",
+    "merchant": "0xf3263408543fac28fe935e62a54b1f5d34b1fef2e0b0226ea628a68bcd78a3c1"
+  },
+  "flows": {
+    "liveRailsCard": {
+      "kind": "railscard",
+      "vaultObjectId": "0xcf24ac2865df3a6d99d4188494d830d87d430b6c1dc602deff2681f358befc47",
+      "paycardId": "0x1809f38156fb5f2724708523ebcce13f04c8bda613c9e9b87ed8ace9b632e627",
+      "recipient": "0xf3263408543fac28fe935e62a54b1f5d34b1fef2e0b0226ea628a68bcd78a3c1",
+      "allocation": "15000000",
+      "rate": "10",
+      "startTimestamp": 1781884572,
+      "durationSeconds": 604800,
+      "state": "active"
+    },
+    "liveRailsFlow": {
+      "kind": "railsflow",
+      "paycardId": "0x698ccb11cf64a75f6d09e21cb09275a0d5631fe72992c62f23875f0e0eca5f2a",
+      "recipient": "0xf3263408543fac28fe935e62a54b1f5d34b1fef2e0b0226ea628a68bcd78a3c1",
+      "allocation": "15000000",
+      "rate": "10",
+      "startTimestamp": 1781884672,
+      "durationSeconds": 604800,
+      "state": "active"
+    },
+    "depletedFlow": {
+      "kind": "railsflow",
+      "paycardId": "0xd3527888258890980d52f42ecbb2fc4f77013efb3c2b877ce6bc86305ddf3662",
+      "recipient": "0xf3263408543fac28fe935e62a54b1f5d34b1fef2e0b0226ea628a68bcd78a3c1",
+      "allocation": "500000",
+      "rate": "500000",
+      "startTimestamp": 1781870406,
+      "durationSeconds": 600,
+      "state": "settled",
+      "receipt": {
+        "closed_at_seconds": "1781870414",
+        "duration_seconds": "600",
+        "initial_allocation": "500000",
+        "max_flow_rate_per_second": "500000",
+        "paycard_id": "0xd3527888258890980d52f42ecbb2fc4f77013efb3c2b877ce6bc86305ddf3662",
+        "payer": "0xf3263408543fac28fe935e62a54b1f5d34b1fef2e0b0226ea628a68bcd78a3c1",
+        "recipient": "0xf3263408543fac28fe935e62a54b1f5d34b1fef2e0b0226ea628a68bcd78a3c1",
+        "residual_delta_amount": "0",
+        "residual_delta_recipient": "0xf3263408543fac28fe935e62a54b1f5d34b1fef2e0b0226ea628a68bcd78a3c1",
+        "residual_returned_to_payer": "0",
+        "settlement_type": 0,
+        "start_timestamp": "1781870406",
+        "total_paid_to_recipient": "500000"
+      },
+      "receiptEventId": {
+        "txDigest": "C5AsDvoUY47K4Ddd4EdesZuyyXLaFKPejNVjUFnrLsmo",
+        "eventSeq": "1"
+      }
+    },
+    "expiredFlow": {
+      "kind": "railsflow",
+      "paycardId": "0x95c977d2c7d7522496919d7325b2c3d162a287d74b2328fe0f6956142ecdac84",
+      "recipient": "0xf3263408543fac28fe935e62a54b1f5d34b1fef2e0b0226ea628a68bcd78a3c1",
+      "allocation": "2000000",
+      "rate": "1000000",
+      "startTimestamp": 1781870405,
+      "durationSeconds": 1,
+      "state": "settled",
+      "receipt": {
+        "closed_at_seconds": "1781870419",
+        "duration_seconds": "1",
+        "initial_allocation": "2000000",
+        "max_flow_rate_per_second": "1000000",
+        "paycard_id": "0x95c977d2c7d7522496919d7325b2c3d162a287d74b2328fe0f6956142ecdac84",
+        "payer": "0xf3263408543fac28fe935e62a54b1f5d34b1fef2e0b0226ea628a68bcd78a3c1",
+        "recipient": "0xf3263408543fac28fe935e62a54b1f5d34b1fef2e0b0226ea628a68bcd78a3c1",
+        "residual_delta_amount": "1000000",
+        "residual_delta_recipient": "0xf3263408543fac28fe935e62a54b1f5d34b1fef2e0b0226ea628a68bcd78a3c1",
+        "residual_returned_to_payer": "1000000",
+        "settlement_type": 1,
+        "start_timestamp": "1781870405",
+        "total_paid_to_recipient": "1000000"
+      },
+      "receiptEventId": {
+        "txDigest": "FruqXUhtc4d2rpuu7SNE4iZQTYGtrtQaGLHXTLhDEpSM",
+        "eventSeq": "2"
+      }
+    },
+    "cancelledFlow": {
+      "kind": "railsflow",
+      "paycardId": "0xc889e1086674243ab54535cee4ea5cc7c8d572ff11f8770febe7225e208de729",
+      "recipient": "0xf3263408543fac28fe935e62a54b1f5d34b1fef2e0b0226ea628a68bcd78a3c1",
+      "allocation": "8000000",
+      "rate": "1000000",
+      "startTimestamp": 1781870406,
+      "durationSeconds": 600,
+      "state": "settled",
+      "receipt": {
+        "closed_at_seconds": "1781870423",
+        "duration_seconds": "600",
+        "initial_allocation": "8000000",
+        "max_flow_rate_per_second": "1000000",
+        "paycard_id": "0xc889e1086674243ab54535cee4ea5cc7c8d572ff11f8770febe7225e208de729",
+        "payer": "0xf3263408543fac28fe935e62a54b1f5d34b1fef2e0b0226ea628a68bcd78a3c1",
+        "recipient": "0xf3263408543fac28fe935e62a54b1f5d34b1fef2e0b0226ea628a68bcd78a3c1",
+        "residual_delta_amount": "0",
+        "residual_delta_recipient": "0xf3263408543fac28fe935e62a54b1f5d34b1fef2e0b0226ea628a68bcd78a3c1",
+        "residual_returned_to_payer": "0",
+        "settlement_type": 2,
+        "start_timestamp": "1781870406",
+        "total_paid_to_recipient": "8000000"
+      },
+      "receiptEventId": {
+        "txDigest": "7yj2UK184Yn1yCpPTfvF9v4vm4FEFK7tpbLqvLt7zpgY",
+        "eventSeq": "2"
+      }
+    }
+  },
+  "transactions": [
+    {
+      "label": "liveRailsCard: create sealed vault",
+      "digest": "CbecJhpSzdZ9dyvhUbUdnTHswb649CGdeE9THojpE6Qo",
+      "explorerUrl": "https://suiexplorer.com/txblock/CbecJhpSzdZ9dyvhUbUdnTHswb649CGdeE9THojpE6Qo?network=testnet",
+      "timestamp": "2026-06-19T11:55:05.134Z"
+    },
+    {
+      "label": "liveRailsCard: unseal to channel",
+      "digest": "8nAmpuUUni1KnegqpBnGFtehCQaeDeAaQkq2JTwTnDKn",
+      "explorerUrl": "https://suiexplorer.com/txblock/8nAmpuUUni1KnegqpBnGFtehCQaeDeAaQkq2JTwTnDKn?network=testnet",
+      "timestamp": "2026-06-19T11:55:07.430Z"
+    },
+    {
+      "label": "liveRailsFlow: mint channel",
+      "digest": "4PiKQM7gaqyPL8mxKUtViVRLuoXf1jwZQQpeG59fCD9b",
+      "explorerUrl": "https://suiexplorer.com/txblock/4PiKQM7gaqyPL8mxKUtViVRLuoXf1jwZQQpeG59fCD9b?network=testnet",
+      "timestamp": "2026-06-19T12:00:13.023Z"
+    },
+    {
+      "label": "depletedFlow: mint channel",
+      "digest": "FcpdGdYyyjEBmhTSy1MgnA5UkNi3NkurjmZmVE1qT4DT",
+      "explorerUrl": "https://suiexplorer.com/txblock/FcpdGdYyyjEBmhTSy1MgnA5UkNi3NkurjmZmVE1qT4DT?network=testnet",
+      "timestamp": "2026-06-19T12:00:14.957Z"
+    },
+    {
+      "label": "depletedFlow: claim to depletion",
+      "digest": "C5AsDvoUY47K4Ddd4EdesZuyyXLaFKPejNVjUFnrLsmo",
+      "explorerUrl": "https://suiexplorer.com/txblock/C5AsDvoUY47K4Ddd4EdesZuyyXLaFKPejNVjUFnrLsmo?network=testnet",
+      "timestamp": "2026-06-19T12:00:16.837Z"
+    },
+    {
+      "label": "expiredFlow: mint channel",
+      "digest": "51iz8DqyUJgn1bCLdzCgKLDCwzoNLUVwqbtUjSJA2bMe",
+      "explorerUrl": "https://suiexplorer.com/txblock/51iz8DqyUJgn1bCLdzCgKLDCwzoNLUVwqbtUjSJA2bMe?network=testnet",
+      "timestamp": "2026-06-19T12:00:18.976Z"
+    },
+    {
+      "label": "expiredFlow: resolve STN-Delta expiry",
+      "digest": "FruqXUhtc4d2rpuu7SNE4iZQTYGtrtQaGLHXTLhDEpSM",
+      "explorerUrl": "https://suiexplorer.com/txblock/FruqXUhtc4d2rpuu7SNE4iZQTYGtrtQaGLHXTLhDEpSM?network=testnet",
+      "timestamp": "2026-06-19T12:00:20.944Z"
+    },
+    {
+      "label": "cancelledFlow: mint channel",
+      "digest": "Am1QgtXPx49e93z3AE8usGPK3ioojhXwVGgL51aMyBQE",
+      "explorerUrl": "https://suiexplorer.com/txblock/Am1QgtXPx49e93z3AE8usGPK3ioojhXwVGgL51aMyBQE?network=testnet",
+      "timestamp": "2026-06-19T12:00:23.144Z"
+    },
+    {
+      "label": "cancelledFlow: cancel channel",
+      "digest": "7yj2UK184Yn1yCpPTfvF9v4vm4FEFK7tpbLqvLt7zpgY",
+      "explorerUrl": "https://suiexplorer.com/txblock/7yj2UK184Yn1yCpPTfvF9v4vm4FEFK7tpbLqvLt7zpgY?network=testnet",
+      "timestamp": "2026-06-19T12:00:25.321Z"
+    },
+    {
+      "label": "liveRailsCard: create sealed vault",
+      "digest": "d7EU3vFRoLPuRA6RtWHdNvRD2tZT2QNPnsjWNUKkmj7",
+      "explorerUrl": "https://suiexplorer.com/txblock/d7EU3vFRoLPuRA6RtWHdNvRD2tZT2QNPnsjWNUKkmj7?network=testnet",
+      "timestamp": "2026-06-19T12:04:51.856Z"
+    },
+    {
+      "label": "liveRailsCard: unseal to channel",
+      "digest": "DRcCEZBykYAY6P4CYbiHyFb43vWjmSQ4GxWH9sXiKLvg",
+      "explorerUrl": "https://suiexplorer.com/txblock/DRcCEZBykYAY6P4CYbiHyFb43vWjmSQ4GxWH9sXiKLvg?network=testnet",
+      "timestamp": "2026-06-19T12:04:56.075Z"
+    },
+    {
+      "label": "liveRailsFlow: mint channel",
+      "digest": "9dpf7p2E1b9nq7dp9YfNE4DbV15eGXmhVJo69N6zivwV",
+      "explorerUrl": "https://suiexplorer.com/txblock/9dpf7p2E1b9nq7dp9YfNE4DbV15eGXmhVJo69N6zivwV?network=testnet",
+      "timestamp": "2026-06-19T12:05:00.151Z"
+    },
+    {
+      "label": "liveRailsCard: create sealed vault",
+      "digest": "6nhexBis7kE7aZmBdDMu5dDTUL5acBptdNBe5fkGBzq2",
+      "explorerUrl": "https://suiexplorer.com/txblock/6nhexBis7kE7aZmBdDMu5dDTUL5acBptdNBe5fkGBzq2?network=testnet",
+      "timestamp": "2026-06-19T15:56:15.449Z"
+    },
+    {
+      "label": "liveRailsCard: unseal to channel",
+      "digest": "63wm4riK9mZ9P2AEu1c5FG1B4451sWKwLdkF2tE3mkHv",
+      "explorerUrl": "https://suiexplorer.com/txblock/63wm4riK9mZ9P2AEu1c5FG1B4451sWKwLdkF2tE3mkHv?network=testnet",
+      "timestamp": "2026-06-19T15:56:17.384Z"
+    },
+    {
+      "label": "liveRailsFlow: mint channel",
+      "digest": "C7b8K347Z3XYjwLLzzHE9UWkB6BaWzMM91GHf1f1bism",
+      "explorerUrl": "https://suiexplorer.com/txblock/C7b8K347Z3XYjwLLzzHE9UWkB6BaWzMM91GHf1f1bism?network=testnet",
+      "timestamp": "2026-06-19T15:57:55.744Z"
+    }
+  ],
+  "completedAt": "2026-06-19T15:57:55.751Z"
+}
