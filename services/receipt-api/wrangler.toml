@@ -5,6 +5,11 @@ compatibility_date = "2026-06-18"
 [vars]
 SUI_NETWORK = "testnet"
 SUI_RPC_URL = "https://fullnode.testnet.sui.io:443"
+# Indexer/proof source package. The Worker filters on
+# `${OPENRAILS_PACKAGE_ID}::events::SettlementReceipt`, whose shape is identical in
+# V1.1 and V1.2 — so moving to V1.2 is a one-line repoint here + redeploy (no schema
+# or code change). Current value = V1.1 cut. After publishing V1.2
+# (scripts/publish-v1-2.sh), set this to the new package id to index V1.2 receipts.
 OPENRAILS_PACKAGE_ID = "0x7cb4ca17166b7999223d665db2e43991288b1fd8466b930e4c2a345e847aaf55"
 
 # Set deployment secrets outside git:

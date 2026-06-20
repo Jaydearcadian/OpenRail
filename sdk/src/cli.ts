@@ -11,11 +11,15 @@ import {
   buildClaimPTB,
   buildCancelPTB,
   buildResolvePTB,
+  buildCreateVaultPTB,
+  buildUnsealVaultPTB,
 } from "./ptb.js";
+import { signVaultEd25519, CURVE_ED25519 } from "./vault.js";
+import { bytesToHex } from "./signer.js";
 
 export const DEFAULT_OPENRAILS_API_BASE_URL = "https://openrails-receipt-api.microcosm.workers.dev";
 
-const WRITE_COMMANDS = new Set(["nonce-create", "open", "claim", "cancel", "resolve"]);
+const WRITE_COMMANDS = new Set(["nonce-create", "open", "open-vault", "unseal", "claim", "cancel", "resolve"]);
 const DEFAULT_COIN_TYPE = "0x2::sui::SUI";
 
 export interface OpenRailsCliIo {
@@ -51,6 +55,8 @@ const HELP_TEXT = `Usage:
 Write commands (V1.2; signs and submits transactions):
   openrails nonce-create [--network testnet|mainnet] [--rpc URL] [--package ID]
   openrails open --coin ID --amount N --rate N --recipient ADDR --duration SECS --recovery ADDR --nonce-account ID [--channel N] [--nonce-value N] [--metadata-hash HEX] [--start UNIX] [--type COIN] [--network ...] [--package ID]
+  openrails open-vault --coin ID --amount N --gas-coin ID [--gas-amount N] --rate N --duration SECS --recovery ADDR --nonce-account ID [--channel N] [--nonce-value N] [--metadata-hash HEX] [--start UNIX] [--type COIN]   (RailsCard; prints the vault id + payer signature)
+  openrails unseal <vaultId> --signature HEX --recipient ADDR [--blob HEX] [--type COIN] [--network ...] [--package ID]
   openrails claim <paycardId> [--type COIN] [--network ...] [--package ID]
   openrails cancel <paycardId> [--type COIN] [--network ...] [--package ID]
   openrails resolve <paycardId> [--type COIN] [--network ...] [--package ID]
@@ -472,6 +478,130 @@ async function runWriteCommand(commandArgs: string[], env: Record<string, string
       paycardId: createdObjectIds(res, "::paycard_v1::Paycard")[0] ?? null,
       nonceChannel: channel.toString(),
       nonceValue: nonceValue.toString(),
+    };
+  }
+
+  if (scope === "open-vault") {
+    const parsed = parseCommandArgs(
+      rest,
+      new Set([
+        ...COMMON_WRITE_OPTIONS,
+        "--coin",
+        "--amount",
+        "--gas-coin",
+        "--gas-amount",
+        "--rate",
+        "--duration",
+        "--start",
+        "--recovery",
+        "--nonce-account",
+        "--channel",
+        "--nonce-value",
+        "--metadata-hash",
+      ])
+    );
+    requireNoPositionals(parsed.positionals, "open-vault");
+    const ctx = loadWriteContext(parsed.options, env);
+
+    const coin = requireValue(parsed.options.get("--coin"), "--coin");
+    const gasCoin = requireValue(parsed.options.get("--gas-coin"), "--gas-coin");
+    const amount = parseBigintArg(parsed.options.get("--amount"), "--amount");
+    const gasAmount = parsed.options.has("--gas-amount")
+      ? parseBigintArg(parsed.options.get("--gas-amount"), "--gas-amount")
+      : 0n;
+    const rate = parseBigintArg(parsed.options.get("--rate"), "--rate");
+    const duration = parseBigintArg(parsed.options.get("--duration"), "--duration");
+    const start = parsed.options.has("--start") ? Number(parseBigintArg(parsed.options.get("--start"), "--start")) : 0;
+    const recovery = requireAddress(parsed.options.get("--recovery"), "--recovery");
+    const nonceAccount = requireValue(parsed.options.get("--nonce-account"), "--nonce-account");
+    const channel = parsed.options.has("--channel") ? parseBigintArg(parsed.options.get("--channel"), "--channel") : 0n;
+    const metaHex = parsed.options.get("--metadata-hash");
+    const metadataHash = metaHex ? hexToByteArray(metaHex, "--metadata-hash") : new Uint8Array(0);
+
+    let nonceValue: bigint;
+    if (parsed.options.has("--nonce-value")) {
+      nonceValue = parseBigintArg(parsed.options.get("--nonce-value"), "--nonce-value");
+    } else {
+      const engine = createNonceEngine({
+        client: ctx.client,
+        packageId: ctx.packageId,
+        payer: ctx.sender,
+        nonceAccountId: nonceAccount,
+      });
+      nonceValue = (await engine.next({ nonceChannel: channel })).value;
+    }
+
+    // The CLI signer is the payer; sign the vault message off-chain (verified at unseal).
+    const payerPubkey = ctx.keypair.getPublicKey().toRawBytes();
+    const vaultParams = {
+      payerPubkey,
+      allocationAmount: amount,
+      gasAmount,
+      maxFlowRatePerSecond: rate,
+      durationSeconds: Number(duration),
+      startTimestamp: start,
+      recoveryTarget: recovery,
+      nonce: nonceValue,
+      curve: CURVE_ED25519,
+      nonceChannel: channel,
+      metadataHash,
+    };
+    const signature = await signVaultEd25519(vaultParams, ctx.keypair);
+
+    const tx = buildCreateVaultPTB({
+      packageId: ctx.packageId,
+      coinObjectId: coin,
+      allocationAmount: amount,
+      gasCoinObjectId: gasCoin,
+      gasAmount,
+      payerPubkeyHex: bytesToHex(payerPubkey),
+      maxFlowRatePerSecond: rate,
+      durationSeconds: Number(duration),
+      startTimestamp: start,
+      recoveryTarget: recovery,
+      nonce: nonceValue,
+      curve: CURVE_ED25519,
+      typeArgument: ctx.coinType,
+      nonceAccountObjectId: nonceAccount,
+      nonceChannel: channel,
+      metadataHash,
+    });
+    const res = await execute(ctx, tx);
+    return {
+      command: "open-vault",
+      sender: ctx.sender,
+      digest: res.digest,
+      vaultId: createdObjectIds(res, "::sealed_vault::SealedVault")[0] ?? null,
+      // Hand this signature to the recipient to call `openrails unseal`.
+      signature: bytesToHex(signature),
+      nonceChannel: channel.toString(),
+      nonceValue: nonceValue.toString(),
+    };
+  }
+
+  if (scope === "unseal") {
+    const parsed = parseCommandArgs(rest, new Set([...COMMON_WRITE_OPTIONS, "--signature", "--recipient", "--blob"]));
+    const vaultId = requireOnePositional(parsed.positionals, "unseal", "vaultId");
+    const ctx = loadWriteContext(parsed.options, env);
+    const signature = hexToByteArray(requireValue(parsed.options.get("--signature"), "--signature"), "--signature");
+    const recipient = requireAddress(parsed.options.get("--recipient"), "--recipient");
+    const blobHex = parsed.options.get("--blob");
+    const blobId = blobHex ? hexToByteArray(blobHex, "--blob") : undefined;
+
+    const tx = buildUnsealVaultPTB({
+      packageId: ctx.packageId,
+      vaultObjectId: vaultId,
+      signature,
+      recipient,
+      blobId,
+      typeArgument: ctx.coinType,
+    });
+    const res = await execute(ctx, tx);
+    return {
+      command: "unseal",
+      sender: ctx.sender,
+      digest: res.digest,
+      paycardId: createdObjectIds(res, "::paycard_v1::Paycard")[0] ?? null,
     };
   }
 

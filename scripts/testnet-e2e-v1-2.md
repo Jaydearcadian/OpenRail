@@ -98,11 +98,44 @@ $CLI open ... --channel 0 --nonce-value 0   # lane already advanced → aborts (
 Omit `--nonce-value` and the CLI's NonceEngine reads the lane's next value live, so
 normal opens always advance correctly; the manual `--nonce-value 0` forces the replay.
 
+## RailsCard (vault) flow — alternative open
+
+Instead of the direct `open`, use the sealed-vault flow. The payer creates the vault
+and gets back a signature; the recipient unseals to mint the channel. A 2nd lane keeps
+it independent from the direct demo above.
+
+```bash
+# Payer creates the vault (consumes lane 1) and prints the vault id + payer signature.
+$CLI open-vault \
+  --coin 0x<sui_coin> --amount 100000000 --gas-coin 0x<another_sui_coin> --gas-amount 5000000 \
+  --rate 1000000 --duration 120 --recovery $(sui client active-address) \
+  --nonce-account $NONCE_ACCT --channel 1
+# → { "vaultId": "0x<vault>", "signature": "<hex>", ... }
+
+# Recipient unseals with that signature → mints the Paycard channel.
+$CLI unseal 0x<vault> --signature <hex> --recipient $(sui client active-address)
+# → { "paycardId": "0x<paycard>", ... }
+```
+
+Then `claim` / `cancel` / `resolve` exactly as above.
+
+## Repoint the Receipt API to V1.2
+
+The Worker is already V1.2-ready — the `SettlementReceipt` event shape is identical, so
+no code or schema change is needed. After publishing, repoint and redeploy:
+
+```bash
+# services/receipt-api/wrangler.toml → set OPENRAILS_PACKAGE_ID = "0x<v1_2_package_id>"
+npm --prefix services/receipt-api run deploy
+```
+
+Its indexer cron then picks up V1.2 `SettlementReceipt` events; `proof` / `receipts get`
+return them. (The new `ChannelMetadataAnchored` event is ignored today — surfacing
+`metadata_hash` in proofs is a later optional enrichment.)
+
 ## Notes / not-yet-done (Phase 2 continued)
 
-- The RailsCard **vault** flow (`create_sealed_vault` → `unseal_and_mint`) is ABI-synced
-  in the SDK but has no CLI command yet — drive it via the SDK builders for now.
 - `sdk/scripts/seed-testnet-showcase.mjs` and the gateway operator still use the V1.1
   ABI; update them to the V1.2 open signatures before reusing.
-- Product-receipt builders, Worker nonce/receipt routes, and web wallet writes are
-  later slices.
+- Product-receipt builders, Worker nonce routes (`/v1/nonces/:payer/:lane`), and web
+  wallet writes are later slices.
