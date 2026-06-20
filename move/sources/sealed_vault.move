@@ -2,8 +2,8 @@
 ///
 /// The payer deposits funds and cryptographic authorization into a shared SealedVault.
 /// Whoever holds a valid signed RailsCard bearer token can call unseal_and_mint,
-/// which verifies the payer's signature on-chain (Ed25519 or secp256k1) and mints
-/// a Paycard to the recipient's address — no payer involvement required at claim time.
+/// which verifies the payer's signature on-chain (Ed25519 or secp256k1) and opens
+/// a shared Paycard channel for the recipient — no payer involvement required at claim time.
 ///
 /// Tier-2 gasless UX: the payer also deposits a small gas_reserve (in SUI). At unseal,
 /// that reserve is dispensed to the recipient in the same transaction, so the recipient
@@ -109,7 +109,7 @@ module open_rails::sealed_vault {
         transfer::share_object(vault);
     }
 
-    /// Verifies the payer's signature, mints a Paycard to the recipient, and dispenses
+    /// Verifies the payer's signature, opens a shared Paycard channel, and dispenses
     /// the gas reserve so the recipient can fund all future claims.
     /// The message signed off-chain must match build_vault_message(vault).
     /// start_timestamp = 0 → stream starts now; non-zero → stream starts at payer's encoded time.
@@ -162,7 +162,7 @@ module open_rails::sealed_vault {
         events::emit_vault_unsealed(vault_id_for_event, paycard_id, recipient, actual_start);
 
         vault.status = STATUS_CLAIMED;
-        transfer::public_transfer(paycard, recipient);
+        transfer::public_share_object(paycard);
 
         // Tier-2: dispense the gas reserve to the recipient for future claims
         let gas_value = balance::value(&vault.gas_reserve);

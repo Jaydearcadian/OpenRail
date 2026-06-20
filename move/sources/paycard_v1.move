@@ -14,13 +14,15 @@ module open_rails::paycard_v1 {
     const EZeroAccruedValue: u64       = 104;
     const ENotAuthorized: u64          = 105;
     const EBlobIdInvalidLength: u64    = 107;
+    const U64_MAX: u64                 = 18446744073709551615;
 
     // --- Lifecycle State Constants ---
     const STATUS_ACTIVE: u8   = 0;
     const STATUS_DEPLETED: u8 = 2;
+    const STATUS_CANCELLED: u8 = 3;
 
-    /// The foundational OpenRails Paycard Container Primitive.
-    /// Modeled as an Owned Object to support parallel, consensus-free execution.
+    /// The foundational OpenRails V1.1 Channel primitive.
+    /// Shared so the recipient can claim and the payer can cancel without object handoff.
     public struct Paycard<phantom T> has key, store {
         id: UID,
         payer: address,
@@ -80,11 +82,20 @@ module open_rails::paycard_v1 {
             status: STATUS_ACTIVE,
         };
 
-        events::emit_minted(id_for_event, payer_address, recipient, total_provision_amount);
+        events::emit_minted(
+            id_for_event,
+            payer_address,
+            recipient,
+            total_provision_amount,
+            max_rate,
+            start_time,
+            duration,
+            recovery_target,
+        );
         if (option::is_some(&paycard.walrus_blob_id)) {
             events::emit_blob_anchored(id_for_event, *option::borrow(&paycard.walrus_blob_id));
         };
-        transfer::public_transfer(paycard, recipient);
+        transfer::share_object(paycard);
     }
 
     /// Computes lazily-evaluated linear accrual since last checkpoint.
@@ -92,16 +103,22 @@ module open_rails::paycard_v1 {
         if (paycard.status != STATUS_ACTIVE) { return 0 };
         if (current_time <= paycard.last_checkpoint_timestamp) { return 0 };
 
-        let end_time = paycard.start_timestamp + paycard.duration_seconds;
+        let end_time = channel_end_time(paycard.start_timestamp, paycard.duration_seconds);
         let applicable_time = if (current_time > end_time) { end_time } else { current_time };
 
         if (applicable_time <= paycard.last_checkpoint_timestamp) { return 0 };
 
         let delta_time = applicable_time - paycard.last_checkpoint_timestamp;
-        let accrued = delta_time * paycard.max_flow_rate_per_second;
-
         let pool_capacity = balance::value(&paycard.allocation_pool);
-        if (accrued > pool_capacity) { pool_capacity } else { accrued }
+        let rate = paycard.max_flow_rate_per_second;
+
+        if (rate == 0 || pool_capacity == 0) {
+            0
+        } else if (delta_time > pool_capacity / rate) {
+            pool_capacity
+        } else {
+            delta_time * rate
+        }
     }
 
     /// Core claim logic — computes accrual, updates state, returns coin.
@@ -115,7 +132,7 @@ module open_rails::paycard_v1 {
         assert!(tx_context::sender(ctx) == paycard.recipient, ENotAuthorized);
 
         let current_time = clock::timestamp_ms(clock_node) / 1000;
-        let end_time = paycard.start_timestamp + paycard.duration_seconds;
+        let end_time = channel_end_time(paycard.start_timestamp, paycard.duration_seconds);
 
         assert!(current_time <= end_time, EStreamExpired);
         assert!(paycard.status == STATUS_ACTIVE, EStreamNotActive);
@@ -135,6 +152,12 @@ module open_rails::paycard_v1 {
                 id_for_event,
                 paycard.payer,
                 paycard.recipient,
+                paycard.initial_allocation,
+                paycard.max_flow_rate_per_second,
+                paycard.start_timestamp,
+                paycard.duration_seconds,
+                paycard.residual_delta_recipient,
+                0,
                 paycard.initial_allocation,  // all of it went to recipient
                 0,                           // no residual — pool fully consumed
                 events::settlement_type_depleted(),
@@ -167,10 +190,10 @@ module open_rails::paycard_v1 {
         clock_node: &Clock,
         ctx: &mut TxContext
     ) {
-        if (paycard.status == STATUS_DEPLETED) { return };
+        if (paycard.status != STATUS_ACTIVE) { return };
 
         let current_time = clock::timestamp_ms(clock_node) / 1000;
-        let end_time = paycard.start_timestamp + paycard.duration_seconds;
+        let end_time = channel_end_time(paycard.start_timestamp, paycard.duration_seconds);
         assert!(current_time >= end_time, EStreamNotActive);
 
         let caller = tx_context::sender(ctx);
@@ -208,6 +231,12 @@ module open_rails::paycard_v1 {
             id_for_event,
             paycard.payer,
             paycard.recipient,
+            paycard.initial_allocation,
+            paycard.max_flow_rate_per_second,
+            paycard.start_timestamp,
+            paycard.duration_seconds,
+            paycard.residual_delta_recipient,
+            residual_remaining,
             total_paid,
             residual_remaining,
             events::settlement_type_expired(),
@@ -215,49 +244,66 @@ module open_rails::paycard_v1 {
         );
     }
 
-    /// Cancels an active Paycard before expiry, returning the full remaining allocation to payer.
-    /// Only the original payer may cancel.
+    /// Cancels an active Paycard before expiry, atomically paying accrued value to the recipient
+    /// and routing all residual capital through STN-Delta to the recovery target.
+    /// Only the original payer may cancel. Paycards are shared channels in V1.1 so the payer can
+    /// exercise this path without taking ownership from the recipient.
     public entry fun cancel_paycard<T>(
-        paycard: Paycard<T>,
+        paycard: &mut Paycard<T>,
         clock_node: &Clock,
         ctx: &mut TxContext
     ) {
         assert!(tx_context::sender(ctx) == paycard.payer, ENotAuthorized);
-
-        let Paycard {
-            id,
-            payer,
-            recipient,
-            allocation_pool,
-            initial_allocation,
-            max_flow_rate_per_second: _,
-            start_timestamp: _,
-            duration_seconds: _,
-            last_checkpoint_timestamp: _,
-            residual_delta_recipient: _,
-            walrus_blob_id: _,
-            status: _,
-        } = paycard;
-
-        let refund_amount = balance::value(&allocation_pool);
-        let id_for_event = object::uid_to_inner(&id);
-        let refund_coin = coin::from_balance(allocation_pool, ctx);
-        transfer::public_transfer(refund_coin, payer);
-        events::emit_cancelled(id_for_event, refund_amount);
-
         let closed_at = clock::timestamp_ms(clock_node) / 1000;
-        let total_paid = initial_allocation - refund_amount;
-        events::emit_settlement_receipt(
+        let end_time = channel_end_time(paycard.start_timestamp, paycard.duration_seconds);
+        assert!(closed_at < end_time, EStreamExpired);
+        assert!(paycard.status == STATUS_ACTIVE, EStreamNotActive);
+
+        let id_for_event = object::uid_to_inner(&paycard.id);
+        let accrued_debt = calculate_accrual_debt(paycard, closed_at);
+
+        if (accrued_debt > 0) {
+            let accrued_balance = balance::split(&mut paycard.allocation_pool, accrued_debt);
+            let accrued_coin = coin::from_balance(accrued_balance, ctx);
+            transfer::public_transfer(accrued_coin, paycard.recipient);
+            events::emit_claimed(id_for_event, accrued_debt, closed_at);
+            paycard.last_checkpoint_timestamp = closed_at;
+        };
+
+        let refund_amount = balance::value(&paycard.allocation_pool);
+        if (refund_amount > 0) {
+            let refund_balance = balance::split(&mut paycard.allocation_pool, refund_amount);
+            let refund_coin = coin::from_balance(refund_balance, ctx);
+            transfer::public_transfer(refund_coin, paycard.residual_delta_recipient);
+            events::emit_residual_returned(id_for_event, refund_amount, paycard.residual_delta_recipient);
+        };
+
+        paycard.status = STATUS_CANCELLED;
+        events::emit_cancelled(
             id_for_event,
-            payer,
-            recipient,
-            total_paid,
-            refund_amount,  // residual = full refund on cancel
-            events::settlement_type_cancelled(),
+            paycard.payer,
+            paycard.recipient,
+            accrued_debt,
+            refund_amount,
             closed_at,
         );
 
-        object::delete(id);
+        let total_paid = paycard.initial_allocation - refund_amount;
+        events::emit_settlement_receipt(
+            id_for_event,
+            paycard.payer,
+            paycard.recipient,
+            paycard.initial_allocation,
+            paycard.max_flow_rate_per_second,
+            paycard.start_timestamp,
+            paycard.duration_seconds,
+            paycard.residual_delta_recipient,
+            refund_amount,
+            total_paid,
+            refund_amount,
+            events::settlement_type_cancelled(),
+            closed_at,
+        );
     }
 
     /// Internal constructor — creates and returns a Paycard without transferring it.
@@ -300,7 +346,16 @@ module open_rails::paycard_v1 {
             status: STATUS_ACTIVE,
         };
 
-        events::emit_minted(id_for_event, payer, recipient, amount);
+        events::emit_minted(
+            id_for_event,
+            payer,
+            recipient,
+            amount,
+            max_rate,
+            start_timestamp,
+            duration,
+            recovery_target,
+        );
         if (option::is_some(&paycard.walrus_blob_id)) {
             events::emit_blob_anchored(id_for_event, *option::borrow(&paycard.walrus_blob_id));
         };
@@ -318,4 +373,13 @@ module open_rails::paycard_v1 {
     public fun get_blob_id<T>(paycard: &Paycard<T>): &Option<vector<u8>> { &paycard.walrus_blob_id }
     public fun status_active(): u8   { STATUS_ACTIVE }
     public fun status_depleted(): u8 { STATUS_DEPLETED }
+    public fun status_cancelled(): u8 { STATUS_CANCELLED }
+
+    fun channel_end_time(start_timestamp: u64, duration_seconds: u64): u64 {
+        if (duration_seconds > U64_MAX - start_timestamp) {
+            U64_MAX
+        } else {
+            start_timestamp + duration_seconds
+        }
+    }
 }

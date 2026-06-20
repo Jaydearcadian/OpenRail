@@ -7,6 +7,10 @@ module open_rails::events {
         payer: address,
         recipient: address,
         amount: u64,
+        max_flow_rate_per_second: u64,
+        start_timestamp: u64,
+        duration_seconds: u64,
+        residual_delta_recipient: address,
     }
 
     public struct SettlementClaimed has copy, drop {
@@ -23,7 +27,11 @@ module open_rails::events {
 
     public struct PaycardCancelled has copy, drop {
         paycard_id: ID,
+        payer: address,
+        recipient: address,
+        accrued_paid: u64,
         refund: u64,
+        timestamp: u64,
     }
 
     public struct BlobIdAnchored has copy, drop {
@@ -31,8 +39,26 @@ module open_rails::events {
         blob_id: vector<u8>,
     }
 
-    public fun emit_minted(paycard_id: ID, payer: address, recipient: address, amount: u64) {
-        event::emit(PaycardMinted { paycard_id, payer, recipient, amount });
+    public fun emit_minted(
+        paycard_id: ID,
+        payer: address,
+        recipient: address,
+        amount: u64,
+        max_flow_rate_per_second: u64,
+        start_timestamp: u64,
+        duration_seconds: u64,
+        residual_delta_recipient: address,
+    ) {
+        event::emit(PaycardMinted {
+            paycard_id,
+            payer,
+            recipient,
+            amount,
+            max_flow_rate_per_second,
+            start_timestamp,
+            duration_seconds,
+            residual_delta_recipient,
+        });
     }
 
     public fun emit_claimed(paycard_id: ID, amount: u64, timestamp: u64) {
@@ -43,8 +69,15 @@ module open_rails::events {
         event::emit(ResidualDeltaReturned { paycard_id, amount, recovery_target });
     }
 
-    public fun emit_cancelled(paycard_id: ID, refund: u64) {
-        event::emit(PaycardCancelled { paycard_id, refund });
+    public fun emit_cancelled(
+        paycard_id: ID,
+        payer: address,
+        recipient: address,
+        accrued_paid: u64,
+        refund: u64,
+        timestamp: u64,
+    ) {
+        event::emit(PaycardCancelled { paycard_id, payer, recipient, accrued_paid, refund, timestamp });
     }
 
     public fun emit_blob_anchored(paycard_id: ID, blob_id: vector<u8>) {
@@ -63,6 +96,12 @@ module open_rails::events {
         paycard_id:                 ID,
         payer:                      address,
         recipient:                  address,
+        initial_allocation:          u64,
+        max_flow_rate_per_second:    u64,
+        start_timestamp:             u64,
+        duration_seconds:            u64,
+        residual_delta_recipient:    address,
+        residual_delta_amount:       u64,
         total_paid_to_recipient:    u64,
         residual_returned_to_payer: u64,
         settlement_type:            u8,
@@ -73,6 +112,12 @@ module open_rails::events {
         paycard_id:                 ID,
         payer:                      address,
         recipient:                  address,
+        initial_allocation:          u64,
+        max_flow_rate_per_second:    u64,
+        start_timestamp:             u64,
+        duration_seconds:            u64,
+        residual_delta_recipient:    address,
+        residual_delta_amount:       u64,
         total_paid_to_recipient:    u64,
         residual_returned_to_payer: u64,
         settlement_type:            u8,
@@ -82,6 +127,12 @@ module open_rails::events {
             paycard_id,
             payer,
             recipient,
+            initial_allocation,
+            max_flow_rate_per_second,
+            start_timestamp,
+            duration_seconds,
+            residual_delta_recipient,
+            residual_delta_amount,
             total_paid_to_recipient,
             residual_returned_to_payer,
             settlement_type,
