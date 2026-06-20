@@ -102,6 +102,11 @@ export interface MintParams {
   recoveryTarget: string;
   typeArgument: string;           // Full coin type: "0x2::sui::SUI"
   blobId?: Uint8Array;            // Optional 32-byte Walrus BlobID to anchor at mint
+  // V1.2 nonce lane + product metadata (payer = sender consumes the lane on open)
+  nonceAccountObjectId: string;   // Shared NonceAccount owned by the payer
+  nonceChannel: bigint;           // Lane id
+  nonceValue: bigint;             // Expected next value for the lane (from NonceEngine)
+  metadataHash?: Uint8Array;      // Canonical product/invoice terms hash (empty = none)
 }
 
 export interface ClaimParams {
@@ -141,10 +146,15 @@ export interface CreateVaultParams {
   /** 0 = dynamic (stream starts when recipient unseals); non-zero = Unix seconds */
   startTimestamp: number;
   recoveryTarget: string;
+  /** V1.2: the lane's expected next value (== nonce_value). Use NonceEngine to source it. */
   nonce: bigint;
   /** CURVE_ED25519 = 0, CURVE_SECP256K1 = 1 */
   curve: number;
   typeArgument: string;
+  // V1.2 nonce lane + product metadata (must match the signed vault message)
+  nonceAccountObjectId: string;   // Shared NonceAccount owned by the payer
+  nonceChannel: bigint;           // Lane id
+  metadataHash?: Uint8Array;      // Canonical product/invoice terms hash (empty = none)
 }
 
 export interface UnsealVaultParams {

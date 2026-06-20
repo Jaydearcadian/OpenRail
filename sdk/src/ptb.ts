@@ -32,9 +32,24 @@ export function buildMintPTB(params: MintParams): Transaction {
       tx.pure.u64(params.durationSeconds),
       tx.pure.address(params.recoveryTarget),
       tx.pure.vector("u8", params.blobId ? Array.from(params.blobId) : []),
+      tx.object(params.nonceAccountObjectId),
+      tx.pure.u64(params.nonceChannel),
+      tx.pure.u64(params.nonceValue),
+      tx.pure.vector("u8", params.metadataHash ? Array.from(params.metadataHash) : []),
     ],
   });
 
+  return tx;
+}
+
+/**
+ * Builds a PTB that creates the caller's shared NonceAccount (V1.2).
+ * One per payer; reused across every channel open. The created object ID is read
+ * from the transaction's created-objects in effects.
+ */
+export function buildCreateNonceAccountPTB(packageId: string): Transaction {
+  const tx = new Transaction();
+  tx.moveCall({ target: `${packageId}::nonce_account::create_nonce_account`, arguments: [] });
   return tx;
 }
 
@@ -167,6 +182,9 @@ export function buildCreateVaultPTB(params: CreateVaultParams): Transaction {
       tx.pure.address(params.recoveryTarget),
       tx.pure.u64(params.nonce),
       tx.pure.u8(params.curve),
+      tx.object(params.nonceAccountObjectId),
+      tx.pure.u64(params.nonceChannel),
+      tx.pure.vector("u8", params.metadataHash ? Array.from(params.metadataHash) : []),
     ],
   });
 

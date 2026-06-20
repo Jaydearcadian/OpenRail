@@ -248,5 +248,17 @@ test("help writes usage text and exits successfully", async () => {
 
   assert.equal(exitCode, 0);
   assert.match(output.stdout, /Usage:/);
+  assert.match(output.stdout, /nonce-create/);
+  assert.match(output.stdout, /openrails open /);
   assert.equal(output.stderr, "");
+});
+
+test("write command without a private key returns a usage error", async () => {
+  const { io, output } = createIo({});
+  const exitCode = await runOpenRailsCli(["nonce-create", "--package", "0xpkg"], io, () => {
+    throw new Error("client factory should not be called for write commands");
+  });
+  assert.equal(exitCode, 2);
+  assert.equal(output.stdout, "");
+  assert.match(output.stderr, /OPENRAILS_PRIVATE_KEY/);
 });

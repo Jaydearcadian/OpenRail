@@ -5,6 +5,7 @@ export * from "./canonical.js";
 export * from "./link-encryption.js";
 export * from "./walrus.js";
 export * from "./ptb.js";
+export * from "./nonce.js";
 export * from "./network.js";
 export * from "./sponsor.js";
 export * from "./vault.js";

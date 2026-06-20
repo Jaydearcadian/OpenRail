@@ -22,6 +22,10 @@ export interface VaultParams {
   nonce: bigint;
   /** CURVE_ED25519 (0) or CURVE_SECP256K1 (1) — must match the vault's stored curve */
   curve: number;
+  /** V1.2: payer nonce lane this open advances (covered by the signature) */
+  nonceChannel: bigint;
+  /** V1.2: canonical product/invoice terms hash, raw bytes (empty = none) */
+  metadataHash: Uint8Array;
 }
 
 /**
@@ -38,6 +42,8 @@ export interface VaultParams {
  *   || recovery_target (32 bytes, raw address bytes)
  *   || nonce (8 bytes)
  *   || curve (1 byte)
+ *   || nonce_channel (8 bytes)        [V1.2]
+ *   || metadata_hash (raw bytes)      [V1.2, empty = none]
  */
 export function buildVaultMessage(params: VaultParams): Uint8Array {
   const chunks: Uint8Array[] = [
@@ -50,6 +56,8 @@ export function buildVaultMessage(params: VaultParams): Uint8Array {
     hexToBytes(params.recoveryTarget),
     bcs.u64().serialize(params.nonce).toBytes(),
     new Uint8Array([params.curve]),
+    bcs.u64().serialize(params.nonceChannel).toBytes(),
+    params.metadataHash,
   ];
 
   const total = chunks.reduce((n, c) => n + c.length, 0);
