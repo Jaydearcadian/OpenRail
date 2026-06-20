@@ -4,10 +4,57 @@
   "description": "OpenRails V1 — Intent-Driven Clearing & Settlement SDK for Sui",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
+  "bin": {
+    "openrails": "./dist/cli.js"
+  },
+  "files": [
+    "dist/"
+  ],
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./browser": {
+      "types": "./dist/browser.d.ts",
+      "default": "./dist/browser.js"
+    },
+    "./worker": {
+      "types": "./dist/worker.d.ts",
+      "default": "./dist/worker.js"
+    },
+    "./api": {
+      "types": "./dist/api.d.ts",
+      "default": "./dist/api.js"
+    },
+    "./dist/*": "./dist/*",
+    "./package.json": "./package.json"
+  },
+  "typesVersions": {
+    "*": {
+      "browser": [
+        "dist/browser.d.ts"
+      ],
+      "worker": [
+        "dist/worker.d.ts"
+      ],
+      "api": [
+        "dist/api.d.ts"
+      ],
+      "*": [
+        "dist/*",
+        "dist/index.d.ts"
+      ]
+    }
+  },
   "scripts": {
-    "build": "tsc",
+    "build": "tsc && node scripts/chmod-cli.mjs",
     "dev": "tsc --watch",
+    "test": "npm run build && node --test test/*.test.mjs",
     "testnet:preflight": "node scripts/testnet-preflight.mjs",
+    "testnet:seed-showcase": "node scripts/seed-testnet-showcase.mjs",
+    "testnet:gateway": "node scripts/gateway-operator.mjs",
+    "testnet:verify-showcase": "node scripts/verify-testnet-showcase.mjs",
     "clean": "rm -rf dist"
   },
   "dependencies": {

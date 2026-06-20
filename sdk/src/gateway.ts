@@ -6,6 +6,7 @@ import {
   buildHeartbeat,
   buildTerminalEvent,
   type GatewayEventSigner,
+  type GatewayTerminalEventInput,
   type SignedGatewayEvent,
 } from "./heartbeat.js";
 import {
@@ -60,7 +61,7 @@ function hydrateStreamState(paycardId: string, fields: Record<string, any>): Str
     startTimestamp:           Number(fields.start_timestamp),
     durationSeconds:          Number(fields.duration_seconds),
     lastCheckpointTimestamp:  Number(fields.last_checkpoint_timestamp),
-    status:                   status === 0 ? "active" : "depleted",
+    status:                   status === 0 ? "active" : status === 3 ? "cancelled" : "depleted",
   };
 }
 
@@ -100,6 +101,14 @@ function mergeInitialWatchlist(state: GatewayPersistedState, paycardIds: string[
     ...state,
     watchlist: [...new Set([...state.watchlist, ...paycardIds])],
   };
+}
+
+function normalizeMoveId(value: unknown): string | null {
+  if (typeof value === "string" && value.length > 0) return value;
+  if (value && typeof value === "object" && "id" in value && typeof value.id === "string") {
+    return value.id;
+  }
+  return null;
 }
 
 // --- Main ---
@@ -240,9 +249,9 @@ export async function startGateway(config: GatewayConfig): Promise<GatewayHandle
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           const parsed = ev.parsedJson as Record<string, any> | undefined;
           if (!parsed) continue;
-          const paycardId = parsed["paycard_id"];
-          if (typeof paycardId === "string" && watching.has(paycardId)) {
-            const terminalEvent = await buildTerminalEvent({
+          const paycardId = normalizeMoveId(parsed["paycard_id"]);
+          if (paycardId && watching.has(paycardId)) {
+            const terminalInput: GatewayTerminalEventInput = {
               eventId: `channel.terminated:${ev.id.txDigest}:${ev.id.eventSeq}`,
               paycardId,
               settlementType: Number(parsed["settlement_type"]),
@@ -250,7 +259,16 @@ export async function startGateway(config: GatewayConfig): Promise<GatewayHandle
               residualReturnedToPayer: String(parsed["residual_returned_to_payer"]),
               closedAtSeconds: Number(parsed["closed_at_seconds"]),
               transactionDigest: ev.id.txDigest,
-            }, nowSec, ++sequence, signerKeypair);
+            };
+            if (parsed["initial_allocation"] !== undefined) terminalInput.initialAllocation = String(parsed["initial_allocation"]);
+            if (parsed["max_flow_rate_per_second"] !== undefined) terminalInput.maxFlowRatePerSecond = String(parsed["max_flow_rate_per_second"]);
+            if (parsed["start_timestamp"] !== undefined) terminalInput.startTimestamp = Number(parsed["start_timestamp"]);
+            if (parsed["duration_seconds"] !== undefined) terminalInput.durationSeconds = Number(parsed["duration_seconds"]);
+            if (parsed["residual_delta_amount"] !== undefined) terminalInput.residualDeltaAmount = String(parsed["residual_delta_amount"]);
+            const residualDeltaRecipient = normalizeMoveId(parsed["residual_delta_recipient"]);
+            if (residualDeltaRecipient) terminalInput.residualDeltaRecipient = residualDeltaRecipient;
+
+            const terminalEvent = await buildTerminalEvent(terminalInput, nowSec, ++sequence, signerKeypair);
             await enqueueAndDispatch(terminalEvent);
           }
         }

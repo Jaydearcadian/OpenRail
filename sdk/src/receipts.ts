@@ -86,6 +86,12 @@ export function parseSettlementReceiptEvent(event: SuiEvent): IndexedSettlementR
   const paycardId = normalizeId(parsed["paycard_id"]);
   const payer = normalizeId(parsed["payer"]);
   const recipient = normalizeId(parsed["recipient"]);
+  const initialAllocation = normalizeAmount(parsed["initial_allocation"]);
+  const maxFlowRatePerSecond = normalizeAmount(parsed["max_flow_rate_per_second"]);
+  const startTimestamp = normalizeTimestamp(parsed["start_timestamp"]);
+  const durationSeconds = normalizeTimestamp(parsed["duration_seconds"]);
+  const residualDeltaRecipient = normalizeId(parsed["residual_delta_recipient"]);
+  const residualDeltaAmount = normalizeAmount(parsed["residual_delta_amount"]);
   const totalPaidToRecipient = normalizeAmount(parsed["total_paid_to_recipient"]);
   const residualReturnedToPayer = normalizeAmount(parsed["residual_returned_to_payer"]);
   const settlementType = normalizeSettlementType(parsed["settlement_type"]);
@@ -107,6 +113,12 @@ export function parseSettlementReceiptEvent(event: SuiEvent): IndexedSettlementR
     paycardId,
     payer,
     recipient,
+    ...(initialAllocation === null ? {} : { initialAllocation }),
+    ...(maxFlowRatePerSecond === null ? {} : { maxFlowRatePerSecond }),
+    ...(startTimestamp === null ? {} : { startTimestamp }),
+    ...(durationSeconds === null ? {} : { durationSeconds }),
+    ...(residualDeltaRecipient === null ? {} : { residualDeltaRecipient }),
+    ...(residualDeltaAmount === null ? {} : { residualDeltaAmount }),
     totalPaidToRecipient,
     residualReturnedToPayer,
     settlementType,

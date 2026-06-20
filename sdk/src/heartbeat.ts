@@ -33,6 +33,12 @@ export interface BufferLowEvent extends GatewayEventBase {
 
 export interface GatewayTerminalEvent extends GatewayEventBase {
   eventType: "channel.terminated";
+  initialAllocation?: string;
+  maxFlowRatePerSecond?: string;
+  startTimestamp?: number;
+  durationSeconds?: number;
+  residualDeltaRecipient?: string;
+  residualDeltaAmount?: string;
   settlementType: number;
   totalPaidToRecipient: string;
   residualReturnedToPayer: string;

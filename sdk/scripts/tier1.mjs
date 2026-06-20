@@ -86,6 +86,10 @@ check('capped at pool balance when pool < rate×time',
   calculateAccrualDebt({ ...base, poolBalance: 300n }, 1010) === 300n
 );
 // 6: projectStreamAt exhaustion
+check('capped at pool balance before oversized rate multiplication',
+  calculateAccrualDebt({ ...base, poolBalance: 10n, maxFlowRatePerSecond: (2n ** 64n) - 1n }, 1002) === 10n
+);
+
 const proj = projectStreamAt({ ...base, poolBalance: 500n }, 1005);
 check('projectStreamAt: exhausted when accrued == pool',
   proj.isExhausted === true && proj.accrued === 500n && proj.remaining === 0n
@@ -643,6 +647,12 @@ const receiptEvent = {
     paycard_id: PAYD,
     payer: ADDR,
     recipient: '0x' + '4'.repeat(64),
+    initial_allocation: '1050',
+    max_flow_rate_per_second: '10',
+    start_timestamp: '12000',
+    duration_seconds: '600',
+    residual_delta_recipient: ADDR,
+    residual_delta_amount: '50',
     total_paid_to_recipient: '1000',
     residual_returned_to_payer: '50',
     settlement_type: '1',
@@ -667,6 +677,12 @@ check('SettlementReceipt event normalizes snake_case fields',
   parsedReceipt?.payer === ADDR &&
   parsedReceipt?.totalPaidToRecipient === '1000' &&
   parsedReceipt?.residualReturnedToPayer === '50' &&
+  parsedReceipt?.initialAllocation === '1050' &&
+  parsedReceipt?.maxFlowRatePerSecond === '10' &&
+  parsedReceipt?.startTimestamp === 12000 &&
+  parsedReceipt?.durationSeconds === 600 &&
+  parsedReceipt?.residualDeltaRecipient === ADDR &&
+  parsedReceipt?.residualDeltaAmount === '50' &&
   parsedReceipt?.settlementType === SETTLEMENT_TYPE_EXPIRED &&
   parsedReceipt?.closedAtSeconds === 12345
 );

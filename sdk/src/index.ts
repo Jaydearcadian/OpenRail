@@ -14,3 +14,5 @@ export * from "./gateway-store.js";
 export * from "./gateway.js";
 export * from "./receipts.js";
 export * from "./sui.js";
+export * from "./proof.js";
+export * from "./api.js";

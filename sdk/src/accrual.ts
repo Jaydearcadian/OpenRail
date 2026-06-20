@@ -6,7 +6,7 @@ export interface StreamState {
   startTimestamp: number;           // Unix seconds
   durationSeconds: number;
   lastCheckpointTimestamp: number;  // Unix seconds
-  status: "active" | "depleted";
+  status: "active" | "depleted" | "cancelled";
 }
 
 /**
@@ -23,8 +23,10 @@ export function calculateAccrualDebt(state: StreamState, currentTimeSec: number)
   if (applicableTime <= state.lastCheckpointTimestamp) return 0n;
 
   const deltaTime = BigInt(applicableTime - state.lastCheckpointTimestamp);
-  const accrued = deltaTime * state.maxFlowRatePerSecond;
-  return accrued > state.poolBalance ? state.poolBalance : accrued;
+  if (state.maxFlowRatePerSecond === 0n || state.poolBalance === 0n) return 0n;
+  if (deltaTime > state.poolBalance / state.maxFlowRatePerSecond) return state.poolBalance;
+
+  return deltaTime * state.maxFlowRatePerSecond;
 }
 
 /**

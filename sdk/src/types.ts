@@ -197,8 +197,14 @@ export interface SettlementReceiptV1 {
   paycardId: string;                // Sui object ID, hex with 0x prefix
   payer: string;                    // original payer address
   recipient: string;                // stream recipient address
+  initialAllocation?: string;       // V1.1 channel allocation, raw token base units
+  maxFlowRatePerSecond?: string;    // V1.1 channel velocity, raw token base units per second
+  startTimestamp?: number;          // V1.1 channel start, Unix seconds
+  durationSeconds?: number;         // V1.1 channel duration
+  residualDeltaRecipient?: string;  // V1.1 STN-Delta recovery address
+  residualDeltaAmount?: string;     // V1.1 amount routed by STN-Delta
   totalPaidToRecipient: string;     // raw token base units
-  residualReturnedToPayer: string;  // raw token base units
+  residualReturnedToPayer: string;  // legacy-compatible alias for residualDeltaAmount
   settlementType: SettlementType;
   closedAtSeconds: number;          // Unix timestamp of closure
   transactionDigest?: string;       // filled in by off-chain indexer
