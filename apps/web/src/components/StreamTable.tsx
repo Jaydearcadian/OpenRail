@@ -5,19 +5,39 @@ interface StreamTableProps {
   streams: Stream[];
   selectedId?: string;
   onSelect?: (streamId: string) => void;
+  onInspect?: (streamId: string) => void;
   loading?: boolean;
   error?: string | null;
 }
 
-export function StreamTable({ streams, selectedId, onSelect, loading = false, error = null }: StreamTableProps) {
+const toneByType: Record<Stream["type"], { tone: string; glyph: string }> = {
+  RailsCard: { tone: "clay", glyph: "C" },
+  RailsFlow: { tone: "sage", glyph: "F" },
+};
+
+function progressPct(stream: Stream): number {
+  const accrued = parseFloat(stream.accrued);
+  const remaining = parseFloat(stream.remaining);
+  if (Number.isNaN(accrued) || Number.isNaN(remaining)) return stream.status === "settled" ? 100 : 0;
+  const total = accrued + remaining;
+  if (total <= 0) return stream.status === "settled" ? 100 : 0;
+  return Math.min(100, Math.round((accrued / total) * 100));
+}
+
+export function StreamTable({ streams, selectedId, onSelect, onInspect, loading = false, error = null }: StreamTableProps) {
+  const activate = (streamId: string) => {
+    onSelect?.(streamId);
+    onInspect?.(streamId);
+  };
+
   return (
     <section className="panel stream-panel" aria-labelledby="streams-title">
       <div className="panel-heading">
         <div>
-          <span>Live Worker channels</span>
-          <h2 id="streams-title">Payment stream activity</h2>
+          <span>⇄ Live Worker channels</span>
+          <h2 id="streams-title">Active rails</h2>
         </div>
-        <button type="button" className="ghost-button" disabled>Worker data</button>
+        <span className="chip c-stream"><span className="dot" style={{ background: "var(--sky)" }} />live</span>
       </div>
 
       {loading ? (
@@ -36,88 +56,33 @@ export function StreamTable({ streams, selectedId, onSelect, loading = false, er
           <p>The Worker returned no stream projections for the configured paycards.</p>
         </div>
       ) : (
-        <>
-          <div className="stream-table-wrap">
-            <table className="stream-table">
-              <caption>Live Worker payment streams and projected balances</caption>
-              <thead>
-                <tr>
-                  <th scope="col">Stream</th>
-                  <th scope="col">Type</th>
-                  <th scope="col">Status</th>
-                  <th scope="col">Rate</th>
-                  <th scope="col">Accrued</th>
-                  <th scope="col">Remaining</th>
-                  <th scope="col">Region</th>
-                  <th scope="col">Receipt</th>
-                </tr>
-              </thead>
-              <tbody>
-                {streams.map((stream) => (
-                  <tr key={stream.id} className={selectedId === stream.id ? "selected-row" : ""}>
-                    <th scope="row">
-                      {onSelect ? (
-                        <button
-                          type="button"
-                          className="row-select"
-                          aria-pressed={selectedId === stream.id}
-                          onClick={() => onSelect(stream.id)}
-                        >
-                          <strong>{stream.label}</strong>
-                          <small>{stream.id} · {stream.counterparty}</small>
-                        </button>
-                      ) : (
-                        <>
-                          <strong>{stream.label}</strong>
-                          <small>{stream.id} · {stream.counterparty}</small>
-                        </>
-                      )}
-                    </th>
-                    <td>{stream.type}</td>
-                    <td><StatusPill status={stream.status} /></td>
-                    <td>{stream.rate}</td>
-                    <td>{stream.accrued}</td>
-                    <td>{stream.remaining}</td>
-                    <td>{stream.region}</td>
-                    <td>{stream.receipt}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-
-          <div className="stream-card-list" aria-label="Live payment stream cards">
-            {streams.map((stream) => (
-              <article key={stream.id} className={`stream-card ${selectedId === stream.id ? "selected-card" : ""}`}>
-                <div className="stream-card-top">
-                  <div>
-                    <h3>{stream.label}</h3>
-                    <p>{stream.id} · {stream.counterparty}</p>
-                  </div>
-                  <StatusPill status={stream.status} />
-                </div>
-                <dl>
-                  <div><dt>Type</dt><dd>{stream.type}</dd></div>
-                  <div><dt>Rate</dt><dd>{stream.rate}</dd></div>
-                  <div><dt>Accrued</dt><dd>{stream.accrued}</dd></div>
-                  <div><dt>Remaining</dt><dd>{stream.remaining}</dd></div>
-                  <div><dt>Region</dt><dd>{stream.region}</dd></div>
-                  <div><dt>Receipt</dt><dd>{stream.receipt}</dd></div>
-                </dl>
-                {onSelect ? (
-                  <button
-                    type="button"
-                    className="ghost-button"
-                    aria-pressed={selectedId === stream.id}
-                    onClick={() => onSelect(stream.id)}
-                  >
-                    Inspect stream
-                  </button>
-                ) : null}
-              </article>
-            ))}
-          </div>
-        </>
+        <div className="rail-list">
+          {streams.map((stream) => {
+            const { tone, glyph } = toneByType[stream.type];
+            const pct = progressPct(stream);
+            return (
+              <button
+                key={stream.id}
+                type="button"
+                className="rail"
+                aria-pressed={selectedId === stream.id}
+                aria-label={`Inspect ${stream.label}`}
+                onClick={() => activate(stream.id)}
+              >
+                <span className="rail-ic" style={{ background: `var(--${tone}-soft)`, color: `var(--${tone})` }} aria-hidden="true">{glyph}</span>
+                <span className="rail-main">
+                  <span className="t">{stream.label} <StatusPill status={stream.status} /></span>
+                  <span className="s">{stream.id} · {stream.counterparty}</span>
+                  <span className="rail-bar" aria-hidden="true"><i style={{ width: `${pct}%`, background: `var(--${tone})` }} /></span>
+                </span>
+                <span className="rail-amt">
+                  <span className="a">{stream.accrued}</span>
+                  <span className="b">{stream.remaining} left</span>
+                </span>
+              </button>
+            );
+          })}
+        </div>
       )}
     </section>
   );

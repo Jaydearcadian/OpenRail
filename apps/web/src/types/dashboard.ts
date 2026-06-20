@@ -59,6 +59,8 @@ export interface StreamDetail {
   projectionSource: string;
   safetyNote: string;
   receiptDigest?: string;
+  region: "Payer client" | "Sui object" | "Gateway projection" | "Receipt index";
+  asOf: string;
 }
 
 export interface CreatePreview {
@@ -77,11 +79,14 @@ export interface ProofCard {
   href?: string;
 }
 
+export type InspectTarget = { kind: "stream" | "receipt"; id: string };
+
 export interface DashboardState {
   route: DashboardRoute;
   sidebarCollapsed: boolean;
   selectedStreamId: string;
   activeModal: FlowKind | null;
+  inspect: InspectTarget | null;
   scenario: ScenarioState;
   web3State: MockWeb3State;
 }
@@ -92,5 +97,7 @@ export type DashboardAction =
   | { type: "select-stream"; streamId: string }
   | { type: "open-modal"; modal: FlowKind }
   | { type: "close-modal" }
+  | { type: "open-inspect"; target: InspectTarget }
+  | { type: "close-inspect" }
   | { type: "set-scenario"; scenario: ScenarioState }
   | { type: "set-web3-state"; web3State: MockWeb3State };

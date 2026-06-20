@@ -8,6 +8,7 @@ const initialState: DashboardState = {
   sidebarCollapsed: false,
   selectedStreamId: OPENRAILS_PAYCARDS[0]?.id ?? "",
   activeModal: null,
+  inspect: null,
   scenario: "normal",
   web3State: "disconnected",
 };
@@ -24,6 +25,10 @@ function reducer(state: DashboardState, action: DashboardAction): DashboardState
       return { ...state, activeModal: action.modal };
     case "close-modal":
       return { ...state, activeModal: null };
+    case "open-inspect":
+      return { ...state, inspect: action.target };
+    case "close-inspect":
+      return { ...state, inspect: null };
     case "set-scenario":
       return { ...state, scenario: action.scenario };
     case "set-web3-state":
