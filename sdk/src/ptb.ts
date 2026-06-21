@@ -20,6 +20,36 @@ export const SUI_CLOCK_OBJECT_ID = "0x6";
 export function buildMintPTB(params: MintParams): Transaction {
   const tx = new Transaction();
 
+  // Funding source. By default the payer's coin object is passed directly and
+  // Move splits the allocation, leaving the remainder in that coin. With
+  // `fundFromGas`, the allocation is split off the gas coin instead — so a payer
+  // holding a single SUI coin can both fund and pay gas; the emptied split coin
+  // is returned to the sender (Move borrows it `&mut`, so it must be consumed).
+  if (params.fundFromGas) {
+    if (!params.sender) throw new Error("fundFromGas requires `sender`.");
+    const [funding] = tx.splitCoins(tx.gas, [tx.pure.u64(params.totalProvisionAmount)]);
+    tx.moveCall({
+      target: `${params.packageId}::paycard_v1::mint_and_fund_envelope`,
+      typeArguments: [params.typeArgument],
+      arguments: [
+        funding,
+        tx.pure.u64(params.totalProvisionAmount),
+        tx.pure.u64(params.maxFlowRatePerSecond),
+        tx.pure.address(params.recipient),
+        tx.pure.u64(params.startTimestamp),
+        tx.pure.u64(params.durationSeconds),
+        tx.pure.address(params.recoveryTarget),
+        tx.pure.vector("u8", params.blobId ? Array.from(params.blobId) : []),
+        tx.object(params.nonceAccountObjectId),
+        tx.pure.u64(params.nonceChannel),
+        tx.pure.u64(params.nonceValue),
+        tx.pure.vector("u8", params.metadataHash ? Array.from(params.metadataHash) : []),
+      ],
+    });
+    tx.transferObjects([funding], tx.pure.address(params.sender));
+    return tx;
+  }
+
   tx.moveCall({
     target: `${params.packageId}::paycard_v1::mint_and_fund_envelope`,
     typeArguments: [params.typeArgument],

@@ -94,6 +94,13 @@ export interface SplitConfig {
 export interface MintParams {
   packageId: string;
   coinObjectId: string;           // Payer's Coin<T> object (Move splits from this directly)
+  /**
+   * Fund the allocation by splitting it off the gas coin instead of using
+   * `coinObjectId`. Lets a payer with a single SUI coin both fund and pay gas
+   * (the now-empty split coin is returned to `sender`). Requires `sender`.
+   */
+  fundFromGas?: boolean;
+  sender?: string;                // Payer address; required when fundFromGas is set
   totalProvisionAmount: bigint;
   maxFlowRatePerSecond: bigint;
   recipient: string;

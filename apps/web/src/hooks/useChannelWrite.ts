@@ -203,6 +203,12 @@ export function useChannelWrite() {
           const tx = buildMintPTB({
             packageId: OPENRAILS_PACKAGE_ID,
             coinObjectId: funding.coinObjectId,
+            // Non-sponsored payers split the allocation off their gas coin so a
+            // single SUI coin covers both (avoids "No valid gas coins found").
+            // Sponsored payers must NOT — tx.gas is the sponsor's coin; the
+            // allocation comes from the user's own coin object instead.
+            fundFromGas: !sponsored,
+            sender: account.address,
             totalProvisionAmount: params.amount,
             maxFlowRatePerSecond: params.rate,
             recipient: params.recipient,
