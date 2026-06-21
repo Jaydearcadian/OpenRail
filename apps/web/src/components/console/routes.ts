@@ -1,4 +1,4 @@
-export type ConsoleRoute = "overview" | "write" | "rails" | "receipts" | "proof" | "nonces" | "credentials";
+export type ConsoleRoute = "overview" | "write" | "channels" | "rails" | "receipts" | "proof" | "nonces" | "credentials";
 
 export interface ConsoleNavItem {
   route: ConsoleRoute;
@@ -20,6 +20,7 @@ export const CONSOLE_NAV: { group: string; items: ConsoleNavItem[] }[] = [
     group: "build",
     items: [
       { route: "write", label: "create a rail", icon: "✎" },
+      { route: "channels", label: "my channels", icon: "◫" },
       { route: "proof", label: "proof", icon: "◷" },
       { route: "nonces", label: "nonce lanes", icon: "⟨⟩" },
       { route: "credentials", label: "credentials", icon: "⚿" },
@@ -30,6 +31,7 @@ export const CONSOLE_NAV: { group: string; items: ConsoleNavItem[] }[] = [
 export const CONSOLE_ROUTE_TITLE: Record<ConsoleRoute, string> = {
   overview: "overview",
   write: "create a rail",
+  channels: "my channels",
   rails: "rails",
   receipts: "receipts",
   proof: "proof",

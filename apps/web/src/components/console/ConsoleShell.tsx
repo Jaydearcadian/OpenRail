@@ -4,6 +4,7 @@ import { Sidebar } from "./Sidebar";
 import { Appbar } from "./Appbar";
 import { Overview } from "./Overview";
 import { WritePanel } from "./WritePanel";
+import { ChannelsPanel } from "./ChannelsPanel";
 import { RailsPanel } from "./RailsPanel";
 import { ReceiptsPanel } from "./ReceiptsPanel";
 import { ProofPanel } from "./ProofPanel";
@@ -70,6 +71,7 @@ export function ConsoleShell() {
             />
           ) : null}
           {route === "write" ? <WritePanel /> : null}
+          {route === "channels" ? <ChannelsPanel /> : null}
           {route === "rails" ? (
             <RailsPanel live={data} status={live.status} error={live.error} search={search} selectedId={selectedRail} onSelect={setSelectedRail} onCreate={() => navigate("write")} />
           ) : null}

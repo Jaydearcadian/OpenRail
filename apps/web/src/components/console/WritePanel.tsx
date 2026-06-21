@@ -4,6 +4,7 @@ import { ConnectMenu } from "../../wallet/ConnectMenu";
 import { explorerObjectUrl, explorerTxUrl, SUI_NETWORK, SUI_FAUCET_URL } from "../../config";
 import { suiToMist, suiGlyph, humanRate, humanDuration } from "../../lib/format";
 import { railCardUrl, railFlowUrl, type FlowTerms } from "../../lib/raillink";
+import { recordChannel } from "../../lib/myChannels";
 import { ShareLink } from "./ShareLink";
 
 type RailKind = "card" | "flow";
@@ -111,7 +112,10 @@ export function WritePanel() {
       durationSeconds: dur,
       recovery: recovery.trim() || self,
     });
-    if (result?.paycardId) setCreated({ paycardId: result.paycardId, link: railCardUrl(result.paycardId) });
+    if (result?.paycardId) {
+      setCreated({ paycardId: result.paycardId, link: railCardUrl(result.paycardId) });
+      recordChannel({ id: result.paycardId, role: "payer", kind: "RailsCard" });
+    }
   };
 
   const lifecycle = async (action: "claim" | "cancel" | "resolve") => {

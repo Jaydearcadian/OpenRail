@@ -5,6 +5,7 @@ import { ConnectMenu } from "../wallet/ConnectMenu";
 import { explorerObjectUrl, explorerTxUrl } from "../config";
 import { suiGlyph, humanRate, humanDuration, clockOf, shortId } from "../lib/format";
 import { clearRailLocation, type FlowTerms, type RailTarget } from "../lib/raillink";
+import { recordChannel } from "../lib/myChannels";
 
 const STATUS_LABEL: Record<number, string> = { 0: "active", 2: "depleted", 3: "cancelled" };
 
@@ -83,7 +84,7 @@ function CardView({ paycardId }: { paycardId: string }) {
   const active = pc?.status === 0;
   const busy = ["pending-signature", "submitted", "finalizing"].includes(w.status.kind);
 
-  const claim = async () => { await w.claim(paycardId); await load(); };
+  const claim = async () => { recordChannel({ id: paycardId, role: "recipient", kind: "RailsCard" }); await w.claim(paycardId); await load(); };
   const settle = async (action: "cancel" | "resolve") => { await w[action](paycardId); await load(); };
 
   return (
@@ -147,7 +148,10 @@ function FlowView({ terms }: { terms: FlowTerms }) {
       durationSeconds: terms.durationSec,
       recovery: terms.recovery,
     });
-    if (result) setDone(result);
+    if (result) {
+      setDone(result);
+      if (result.paycardId) recordChannel({ id: result.paycardId, role: "payer", kind: "RailsFlow" });
+    }
   };
 
   return (
