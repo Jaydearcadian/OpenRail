@@ -6,7 +6,7 @@ import {
   useSignTransaction,
   useSuiClient,
 } from "@mysten/dapp-kit";
-import { EnokiClient, isEnokiWallet } from "@mysten/enoki";
+import { EnokiClient, isEnokiWallet, getSession } from "@mysten/enoki";
 import { Transaction } from "@mysten/sui/transactions";
 import { fromBase64, toBase64 } from "@mysten/sui/utils";
 import {
@@ -23,7 +23,6 @@ import {
   SUI_COIN_TYPE,
   ENOKI_API_KEY,
   ENOKI_SPONSORED_WRITES,
-  ENOKI_SPONSOR_TARGETS,
 } from "../config";
 
 /** The public write state machine surfaced to the UI (V1.2 write UX states). */
@@ -98,15 +97,18 @@ export function useChannelWrite() {
       setStatus({ kind: "pending-signature" });
 
       let digest: string;
-      if (sponsored && enokiClient && account) {
-        // Enoki sponsored flow: build kind-only bytes → sponsor → sign → execute.
+      if (sponsored && enokiClient && currentWallet) {
+        // Enoki zkLogin sponsorship (JWT mode): Enoki derives the sender from the
+        // authenticated Google identity and applies the *portal* allowlist — no
+        // per-user address registration. Any signed-in Gmail user is sponsored.
+        const session = await getSession(currentWallet);
+        const jwt = session?.jwt;
+        if (!jwt) throw new Error("No zkLogin session — sign in with Google again.");
         const kindBytes = await (transaction as Transaction).build({ client, onlyTransactionKind: true });
         const created = await enokiClient.createSponsoredTransaction({
           network: SUI_NETWORK,
           transactionKindBytes: toBase64(kindBytes),
-          sender: account.address,
-          allowedAddresses: [account.address],
-          allowedMoveCallTargets: ENOKI_SPONSOR_TARGETS,
+          jwt,
         });
         const { signature } = await signTransaction({ transaction: Transaction.from(fromBase64(created.bytes)) });
         setStatus({ kind: "submitted", digest: created.digest });
@@ -126,7 +128,7 @@ export function useChannelWrite() {
       });
       return res;
     },
-    [account, client, enokiClient, signAndExecute, signTransaction, sponsored],
+    [account, client, currentWallet, enokiClient, signAndExecute, signTransaction, sponsored],
   );
 
   const ensureNonceAccount = useCallback(

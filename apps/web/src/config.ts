@@ -36,13 +36,19 @@ export const SUI_FAUCET_URL = "https://faucet.sui.io/?network=testnet";
 
 /**
  * Gas sponsorship. When an Enoki (zkLogin) wallet is connected and an Enoki key
- * is configured, writes are routed through the Enoki sponsored-transaction API so
- * the user pays no gas. NOTE: only gas is sponsored — the RailsCard allocation
- * still comes from the payer's own SUI. Sponsorship also requires the Enoki
- * portal to enable sponsored transactions and allowlist these move-call targets.
+ * is configured, writes are routed through the Enoki sponsored-transaction API in
+ * JWT mode: Enoki derives the sender from the authenticated Google identity, so
+ * ANY signed-in Gmail user is sponsored with no per-user registration.
+ *
+ * NOTE: only gas is sponsored — the RailsCard allocation still comes from the
+ * payer's own SUI. Sponsorship requires the Enoki portal (one-time setup) to
+ * enable sponsored transactions on this network and allowlist the move-call
+ * targets below. The targets are NOT sent from the client in JWT mode; paste
+ * them into the portal's sponsorship allowlist instead.
  */
 export const ENOKI_SPONSORED_WRITES = ENOKI_API_KEY.length > 0;
 
+/** Paste these into the Enoki portal's sponsorship "allowed move-call targets". */
 export const ENOKI_SPONSOR_TARGETS = [
   `${OPENRAILS_PACKAGE_ID}::paycard_v1::mint_and_fund_envelope`,
   `${OPENRAILS_PACKAGE_ID}::paycard_v1::claim_settlement_round`,
