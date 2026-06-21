@@ -1,6 +1,7 @@
 name = "openrails-receipt-api"
 main = "src/handler.ts"
 compatibility_date = "2026-06-18"
+compatibility_flags = ["nodejs_compat"]
 
 [vars]
 SUI_NETWORK = "testnet"

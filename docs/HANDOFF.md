@@ -26,7 +26,7 @@ V1.2 Move package **published to testnet** on 2026-06-21.
 **Publish tx:** `6ofGhCShZgyFxGwk1y1Y8suEqkvVdkyxn4otD5QByYy6`
 **UpgradeCap:** `0xfb7762e267f119f0ce9ca21469e3c63323e89b73e19d0581c130c836694d578f`
 
-`wrangler.toml` and `apps/web/src/config.ts` have been repointed to the V1.2 package. Worker needs redeployment (`npm --prefix services/receipt-api run deploy`) to index V1.2 receipts.
+`wrangler.toml` and `apps/web/src/config.ts` have been repointed to the V1.2 package. Worker redeployed 2026-06-21 with `nodejs_compat` flag. Indexing V1.2 receipts on 5-min cron.
 
 ## What V1.1 contains
 
@@ -327,16 +327,16 @@ rm -rf apps/web/node_modules/@openrails/sdk
 npm --prefix apps/web install
 ```
 
-Web hosting (Cloudflare Pages) — unknown from repo:
+Web hosting (Cloudflare Pages):
 
 ```text
-Cloudflare Pages project name: <unknown>
-Production web URL: <unknown>
-Preview URL pattern: <unknown>
-Custom domain: <unknown>
+Cloudflare Pages project name: openrails-console
+Production web URL: https://openrails-console.pages.dev/
+Current deploy: https://dd546109.openrails-console.pages.dev
 Build command: npm run build
 Build output directory: dist
 Build environment variables: VITE_OPENRAILS_PACKAGE_ID, VITE_ENOKI_API_KEY, etc.
+Deployed: 2026-06-21
 ```
 
 ### Post-deploy smoke checks
