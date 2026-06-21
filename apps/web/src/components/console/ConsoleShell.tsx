@@ -71,7 +71,7 @@ export function ConsoleShell() {
           ) : null}
           {route === "write" ? <WritePanel /> : null}
           {route === "rails" ? (
-            <RailsPanel live={data} status={live.status} error={live.error} search={search} selectedId={selectedRail} onSelect={setSelectedRail} />
+            <RailsPanel live={data} status={live.status} error={live.error} search={search} selectedId={selectedRail} onSelect={setSelectedRail} onCreate={() => navigate("write")} />
           ) : null}
           {route === "receipts" ? <ReceiptsPanel live={data} status={live.status} error={live.error} search={search} /> : null}
           {route === "proof" ? <ProofPanel live={data} status={live.status} error={live.error} /> : null}

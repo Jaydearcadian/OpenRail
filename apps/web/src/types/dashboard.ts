@@ -64,6 +64,8 @@ export interface StreamDetail {
   ratePerSecMist?: string;
   startTimestampSec?: number;
   endTimestampSec?: number;
+  payerFull?: string;
+  recipientFull?: string;
 }
 
 export interface CreatePreview {

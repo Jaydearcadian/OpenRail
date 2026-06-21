@@ -1,18 +1,32 @@
-import { useContext, useEffect } from "react";
+import { useContext, useEffect, useState } from "react";
 import { useCurrentAccount, SuiClientContext } from "@mysten/dapp-kit";
 
-/** Reads the connected wallet's declared chain and syncs SuiClientProvider to match. */
 export function NetworkSync() {
   const account = useCurrentAccount();
   const ctx = useContext(SuiClientContext);
+  const [wrongNet, setWrongNet] = useState(false);
 
   useEffect(() => {
-    if (!account || !ctx) return;
-    for (const chain of account.chains) {
-      if (chain === "sui:testnet") { ctx.selectNetwork("testnet"); return; }
-      if (chain === "sui:mainnet") { ctx.selectNetwork("mainnet"); return; }
-    }
-  }, [account, ctx]);
+    if (!ctx) return;
+    ctx.selectNetwork("testnet");
+  }, [ctx]);
 
-  return null;
+  useEffect(() => {
+    if (!account) { setWrongNet(false); return; }
+    const onTestnet = account.chains.some((c) => c === "sui:testnet");
+    setWrongNet(!onTestnet);
+  }, [account]);
+
+  if (!wrongNet) return null;
+
+  return (
+    <div style={{
+      position: "fixed", bottom: 12, left: "50%", transform: "translateX(-50%)",
+      background: "#c0392b", color: "#fff", padding: "8px 16px",
+      borderRadius: 4, fontSize: 13, fontFamily: "var(--font-mono, monospace)",
+      zIndex: 9999, pointerEvents: "none",
+    }}>
+      wallet is on wrong network — switch to Sui Testnet
+    </div>
+  );
 }

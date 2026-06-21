@@ -183,6 +183,8 @@ function mapStreamDetail(stream: Stream, bundle: OpenRailsStreamBundle, receipts
     ratePerSecMist: receipt?.maxFlowRatePerSecond,
     startTimestampSec: receipt?.startTimestamp,
     endTimestampSec: receipt?.closedAtSeconds,
+    payerFull: receipt?.payer,
+    recipientFull: receipt?.recipient,
   };
 }
 
