@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { useChannelWrite, type WriteStatus } from "../../hooks/useChannelWrite";
 import { ConnectMenu } from "../../wallet/ConnectMenu";
-import { explorerObjectUrl, explorerTxUrl, SUI_NETWORK } from "../../config";
+import { explorerObjectUrl, explorerTxUrl, SUI_NETWORK, SUI_FAUCET_URL } from "../../config";
 import { suiToMist, suiGlyph, humanRate, humanDuration } from "../../lib/format";
 import { railCardUrl, railFlowUrl, type FlowTerms } from "../../lib/raillink";
 import { ShareLink } from "./ShareLink";
@@ -19,7 +19,7 @@ function StatusLine({ status }: { status: WriteStatus }) {
     case "idle": return null;
     case "disconnected": return <div className="status-line warn">connect a wallet to continue</div>;
     case "wrong-network": return <div className="status-line warn">wrong network — switch your wallet to {SUI_NETWORK}</div>;
-    case "insufficient-balance": return <div className="status-line warn">insufficient SUI: need ◎{fmtSui(status.need)}, have ◎{fmtSui(status.have)} · faucet testnet SUI</div>;
+    case "insufficient-balance": return <div className="status-line warn">insufficient SUI: need ◎{fmtSui(status.need)}, have ◎{fmtSui(status.have)} · <a href={SUI_FAUCET_URL} target="_blank" rel="noreferrer">get testnet SUI →</a></div>;
     case "pending-signature": return <div className="status-line info"><span className="spin" />approve in your wallet…</div>;
     case "submitted": return <div className="status-line info"><span className="spin" />submitted · finalizing…</div>;
     case "finalizing": return <div className="status-line info"><span className="spin" />finalizing on-chain…</div>;
@@ -140,6 +140,17 @@ export function WritePanel() {
             <div className="sd">inbound invoice · they fund, you get paid</div>
           </button>
         </div>
+
+        {w.isZkLogin ? (
+          <div className="zk-note">
+            {w.sponsored ? "✓ signed in with Google (zkLogin) — gas is sponsored, no SUI needed for fees." : "signed in with Google (zkLogin)."}
+            {kind === "card" ? (
+              <> A RailsCard still streams <b>your own SUI</b> as the allocation. With no SUI, <button type="button" className="link-btn" onClick={() => { setKind("flow"); reset(); }}>create a RailsFlow invoice</button> instead — it needs no funds and no transaction.</>
+            ) : (
+              <> A RailsFlow invoice needs no SUI and no transaction — the payer funds it when they open the link.</>
+            )}
+          </div>
+        ) : null}
 
         <form className="form" onSubmit={submit}>
           <label>allocation (SUI)<input value={amount} onChange={(e) => setAmount(e.target.value)} inputMode="decimal" /></label>

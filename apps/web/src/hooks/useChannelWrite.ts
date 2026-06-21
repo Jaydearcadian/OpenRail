@@ -1,5 +1,14 @@
-import { useCallback, useState } from "react";
-import { useCurrentAccount, useSignAndExecuteTransaction, useSuiClient } from "@mysten/dapp-kit";
+import { useCallback, useMemo, useState } from "react";
+import {
+  useCurrentAccount,
+  useCurrentWallet,
+  useSignAndExecuteTransaction,
+  useSignTransaction,
+  useSuiClient,
+} from "@mysten/dapp-kit";
+import { EnokiClient, isEnokiWallet } from "@mysten/enoki";
+import { Transaction } from "@mysten/sui/transactions";
+import { fromBase64, toBase64 } from "@mysten/sui/utils";
 import {
   buildMintPTB,
   buildClaimPTB,
@@ -8,7 +17,14 @@ import {
   buildCreateNonceAccountPTB,
   createNonceEngine,
 } from "@openrails/sdk";
-import { OPENRAILS_PACKAGE_ID, SUI_NETWORK, SUI_COIN_TYPE } from "../config";
+import {
+  OPENRAILS_PACKAGE_ID,
+  SUI_NETWORK,
+  SUI_COIN_TYPE,
+  ENOKI_API_KEY,
+  ENOKI_SPONSORED_WRITES,
+  ENOKI_SPONSOR_TARGETS,
+} from "../config";
 
 /** The public write state machine surfaced to the UI (V1.2 write UX states). */
 export type WriteStatus =
@@ -56,7 +72,9 @@ function classifyError(error: unknown): WriteStatus {
 export function useChannelWrite() {
   const account = useCurrentAccount();
   const client = useSuiClient();
+  const { currentWallet } = useCurrentWallet();
   const { mutateAsync: signAndExecute } = useSignAndExecuteTransaction();
+  const { mutateAsync: signTransaction } = useSignTransaction();
   const [status, setStatus] = useState<WriteStatus>({ kind: "idle" });
 
   const reset = useCallback(() => setStatus({ kind: "idle" }), []);
@@ -64,21 +82,51 @@ export function useChannelWrite() {
   const connected = Boolean(account);
   const onNetwork = !account || account.chains.some((c) => c === `sui:${SUI_NETWORK}`);
 
+  // zkLogin (Enoki) wallets sign silently; when an Enoki key is configured we
+  // route their writes through Enoki gas sponsorship so they pay no network fee.
+  const isZkLogin = Boolean(currentWallet && isEnokiWallet(currentWallet));
+  const sponsored = isZkLogin && ENOKI_SPONSORED_WRITES;
+  const enokiClient = useMemo(
+    () => (ENOKI_SPONSORED_WRITES ? new EnokiClient({ apiKey: ENOKI_API_KEY }) : null),
+    [],
+  );
+
   /** Sign + execute, then wait for parsed effects/objectChanges. Threads UX states. */
   const exec = useCallback(
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     async (transaction: any): Promise<TxResult> => {
       setStatus({ kind: "pending-signature" });
-      const signed = await signAndExecute({ transaction });
-      setStatus({ kind: "submitted", digest: signed.digest });
-      setStatus({ kind: "finalizing", digest: signed.digest });
+
+      let digest: string;
+      if (sponsored && enokiClient && account) {
+        // Enoki sponsored flow: build kind-only bytes → sponsor → sign → execute.
+        const kindBytes = await (transaction as Transaction).build({ client, onlyTransactionKind: true });
+        const created = await enokiClient.createSponsoredTransaction({
+          network: SUI_NETWORK,
+          transactionKindBytes: toBase64(kindBytes),
+          sender: account.address,
+          allowedAddresses: [account.address],
+          allowedMoveCallTargets: ENOKI_SPONSOR_TARGETS,
+        });
+        const { signature } = await signTransaction({ transaction: Transaction.from(fromBase64(created.bytes)) });
+        setStatus({ kind: "submitted", digest: created.digest });
+        setStatus({ kind: "finalizing", digest: created.digest });
+        await enokiClient.executeSponsoredTransaction({ digest: created.digest, signature });
+        digest = created.digest;
+      } else {
+        const signed = await signAndExecute({ transaction });
+        setStatus({ kind: "submitted", digest: signed.digest });
+        setStatus({ kind: "finalizing", digest: signed.digest });
+        digest = signed.digest;
+      }
+
       const res = await client.waitForTransaction({
-        digest: signed.digest,
+        digest,
         options: { showEffects: true, showObjectChanges: true, showEvents: true },
       });
       return res;
     },
-    [client, signAndExecute],
+    [account, client, enokiClient, signAndExecute, signTransaction, sponsored],
   );
 
   const ensureNonceAccount = useCallback(
@@ -193,6 +241,8 @@ export function useChannelWrite() {
     reset,
     connected,
     onNetwork,
+    isZkLogin,
+    sponsored,
     address: account?.address,
     open,
     claim: (id: string, type?: string) => lifecycle("claim", id, type),
