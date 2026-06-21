@@ -1,11 +1,5 @@
-import { useState } from "react";
-import { DashboardShell } from "./components/DashboardShell";
-import { LandingPage } from "./components/LandingPage";
+import { ConsoleShell } from "./components/console/ConsoleShell";
 
 export default function App() {
-  const [view, setView] = useState<"landing" | "dashboard">("landing");
-
-  return view === "landing"
-    ? <LandingPage onLaunch={() => setView("dashboard")} />
-    : <DashboardShell onBack={() => setView("landing")} />;
+  return <ConsoleShell />;
 }

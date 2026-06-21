@@ -2,18 +2,13 @@ import { Fragment } from "react";
 
 export type JsonValue = string | number | boolean;
 
-interface JsonBlockProps {
-  data: Array<{ key: string; value: JsonValue }>;
-  note?: string;
-}
-
 function renderValue(value: JsonValue) {
   if (typeof value === "number") return <span className="jn">{value}</span>;
   if (typeof value === "boolean") return <span className="jb">{String(value)}</span>;
   return <span className="js">"{value}"</span>;
 }
 
-export function JsonBlock({ data, note }: JsonBlockProps) {
+export function JsonBox({ data, note }: { data: Array<{ key: string; value: JsonValue }>; note?: string }) {
   return (
     <pre className="jsonbox" aria-label="JSON payload">
 {"{"}
