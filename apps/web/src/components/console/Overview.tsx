@@ -45,22 +45,24 @@ export function Overview({ live, status, error, search, onSelectRail }: Overview
       <div className="cols">
         <div className="panel">
           <div className="ph"><h3>⇄ active rails</h3></div>
-          <table className="dt">
-            <thead><tr><th>id</th><th>type</th><th>status</th><th>progress</th><th className="num">accrued</th></tr></thead>
-            <tbody>
-              {streams.length === 0 ? (
-                <tr className="static"><td colSpan={5} className="dt-empty">{status === "loading" ? "loading…" : error ? error : "no live streams"}</td></tr>
-              ) : streams.map((s) => (
-                <tr key={s.id} onClick={() => onSelectRail(s.id)}>
-                  <td className="id" title={s.id}>{shortId(s.id, 8, 6)}</td>
-                  <td className="mut">{s.type}</td>
-                  <td><span className={`badge ${streamBadge(s.status)}`}>{s.status}</span></td>
-                  <td><span className="barmini"><i style={{ width: `${progressPct(s)}%` }} /></span></td>
-                  <td className="num">{s.accrued}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          <div className="table-wrap">
+            <table className="dt">
+              <thead><tr><th>id</th><th>type</th><th>status</th><th>progress</th><th className="num">accrued</th></tr></thead>
+              <tbody>
+                {streams.length === 0 ? (
+                  <tr className="static"><td colSpan={5} className="dt-empty">{status === "loading" ? "loading…" : error ? error : "no live streams"}</td></tr>
+                ) : streams.map((s) => (
+                  <tr key={s.id} onClick={() => onSelectRail(s.id)}>
+                    <td className="id" title={s.id}>{shortId(s.id, 8, 6)}</td>
+                    <td className="mut">{s.type}</td>
+                    <td><span className={`badge ${streamBadge(s.status)}`}>{s.status}</span></td>
+                    <td><span className="barmini"><i style={{ width: `${progressPct(s)}%` }} /></span></td>
+                    <td className="num">{s.accrued}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
 
         <div className="col">

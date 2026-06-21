@@ -61,23 +61,25 @@ export function RailsPanel({ live, status, error, search, selectedId, onSelect, 
     <div className="cols">
       <div className="panel">
         <div className="ph"><h3>⇄ all rails</h3>{onCreate ? <button type="button" className="act-link" onClick={onCreate}>+ create</button> : null}</div>
-        <table className="dt">
-          <thead><tr><th>id</th><th>type</th><th>status</th><th>progress</th><th className="num">accrued</th><th className="num">remaining</th></tr></thead>
-          <tbody>
-            {streams.length === 0 ? (
-              <tr className="static"><td colSpan={6} className="dt-empty">{status === "loading" ? "loading…" : error ? error : "no live streams"}</td></tr>
-            ) : streams.map((s) => (
-              <tr key={s.id} className={selectedId === s.id ? "row-active" : ""} onClick={() => onSelect(s.id)}>
-                <td className="id" title={s.id}>{shortId(s.id, 8, 6)}</td>
-                <td className="mut">{s.type}</td>
-                <td><span className={`badge ${streamBadge(s.status)}`}>{s.status}</span></td>
-                <td><span className="barmini"><i style={{ width: `${progressPct(s)}%` }} /></span></td>
-                <td className="num">{s.accrued}</td>
-                <td className="num mut">{s.remaining}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+        <div className="table-wrap">
+          <table className="dt">
+            <thead><tr><th>id</th><th>type</th><th>status</th><th>progress</th><th className="num">accrued</th><th className="num">remaining</th></tr></thead>
+            <tbody>
+              {streams.length === 0 ? (
+                <tr className="static"><td colSpan={6} className="dt-empty">{status === "loading" ? "loading…" : error ? error : "no live streams"}</td></tr>
+              ) : streams.map((s) => (
+                <tr key={s.id} className={selectedId === s.id ? "row-active" : ""} onClick={() => onSelect(s.id)}>
+                  <td className="id" title={s.id}>{shortId(s.id, 8, 6)}</td>
+                  <td className="mut">{s.type}</td>
+                  <td><span className={`badge ${streamBadge(s.status)}`}>{s.status}</span></td>
+                  <td><span className="barmini"><i style={{ width: `${progressPct(s)}%` }} /></span></td>
+                  <td className="num">{s.accrued}</td>
+                  <td className="num mut">{s.remaining}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       </div>
 
       <div className="col">

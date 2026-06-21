@@ -120,22 +120,24 @@ export function ReceiptsPanel({ live, status, error, search }: ReceiptsPanelProp
     <div className="cols">
       <div className="panel">
         <div className="ph"><h3>▤ settlement receipts</h3><span className="badge b-proven">on-chain</span></div>
-        <table className="dt">
-          <thead><tr><th>receipt</th><th>channel</th><th>outcome</th><th className="num">paid</th><th className="num">residual</th></tr></thead>
-          <tbody>
-            {receipts.length === 0 ? (
-              <tr className="static"><td colSpan={5} className="dt-empty">{status === "loading" ? "loading…" : error ? error : "no terminal receipts"}</td></tr>
-            ) : receipts.map((r) => (
-              <tr key={r.id} className={selected?.id === r.id ? "row-active" : ""} onClick={() => setSelectedId(r.id)}>
-                <td className="id">{r.digest}</td>
-                <td className="mut">{r.paycardId ?? r.label}</td>
-                <td><span className={`badge ${receiptBadge(r.type)}`}>{r.type}</span></td>
-                <td className="num">{r.paid}</td>
-                <td className="num mut">{r.residual}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+        <div className="table-wrap">
+          <table className="dt">
+            <thead><tr><th>receipt</th><th>channel</th><th>outcome</th><th className="num">paid</th><th className="num">residual</th></tr></thead>
+            <tbody>
+              {receipts.length === 0 ? (
+                <tr className="static"><td colSpan={5} className="dt-empty">{status === "loading" ? "loading…" : error ? error : "no terminal receipts"}</td></tr>
+              ) : receipts.map((r) => (
+                <tr key={r.id} className={selected?.id === r.id ? "row-active" : ""} onClick={() => setSelectedId(r.id)}>
+                  <td className="id">{r.digest}</td>
+                  <td className="mut">{r.paycardId ?? r.label}</td>
+                  <td><span className={`badge ${receiptBadge(r.type)}`}>{r.type}</span></td>
+                  <td className="num">{r.paid}</td>
+                  <td className="num mut">{r.residual}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       </div>
 
       <div className="col">
