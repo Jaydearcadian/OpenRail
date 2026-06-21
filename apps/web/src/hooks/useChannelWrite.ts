@@ -102,33 +102,47 @@ export function useChannelWrite() {
     async (transaction: any): Promise<TxResult> => {
       setStatus({ kind: "pending-signature" });
 
+      // Direct path: the connected wallet (zkLogin or standard) signs & pays gas.
+      const runDirect = async (): Promise<string> => {
+        const signed = await signAndExecute({ transaction, chain: `sui:${SUI_NETWORK}` });
+        setStatus({ kind: "submitted", digest: signed.digest });
+        setStatus({ kind: "finalizing", digest: signed.digest });
+        return signed.digest;
+      };
+
       let digest: string;
       if (sponsored && enokiClient && currentWallet) {
         // Enoki zkLogin sponsorship (JWT mode): Enoki derives the sender from the
         // authenticated Google identity and applies the *portal* allowlist — no
         // per-user address registration. Any signed-in Gmail user is sponsored.
-        const session = await getSession(currentWallet);
-        const jwt = session?.jwt;
-        if (!jwt) throw new Error("No zkLogin session — sign in with Google again.");
-        const kindBytes = await (transaction as Transaction).build({ client, onlyTransactionKind: true });
-        const created = await enokiClient.createSponsoredTransaction({
-          network: SUI_NETWORK,
-          transactionKindBytes: toBase64(kindBytes),
-          jwt,
-        });
-        const { signature } = await signTransaction({
-          transaction: Transaction.from(fromBase64(created.bytes)),
-          chain: `sui:${SUI_NETWORK}`,
-        });
-        setStatus({ kind: "submitted", digest: created.digest });
-        setStatus({ kind: "finalizing", digest: created.digest });
-        await enokiClient.executeSponsoredTransaction({ digest: created.digest, signature });
-        digest = created.digest;
+        try {
+          const session = await getSession(currentWallet);
+          const jwt = session?.jwt;
+          if (!jwt) throw new Error("No zkLogin session — sign in with Google again.");
+          // Clone for kind-only build so the original tx stays pristine for fallback.
+          const kindBytes = await Transaction.from(transaction).build({ client, onlyTransactionKind: true });
+          const created = await enokiClient.createSponsoredTransaction({
+            network: SUI_NETWORK,
+            transactionKindBytes: toBase64(kindBytes),
+            jwt,
+          });
+          const { signature } = await signTransaction({
+            transaction: Transaction.from(fromBase64(created.bytes)),
+            chain: `sui:${SUI_NETWORK}`,
+          });
+          setStatus({ kind: "submitted", digest: created.digest });
+          setStatus({ kind: "finalizing", digest: created.digest });
+          await enokiClient.executeSponsoredTransaction({ digest: created.digest, signature });
+          digest = created.digest;
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err);
+          if (/reject|denied|cancel/i.test(msg)) throw err; // user cancelled — don't retry
+          // Sponsorship unavailable (e.g. Enoki 403 — portal not yet configured).
+          // Fall back to the zkLogin user paying their own gas, if they hold SUI.
+          digest = await runDirect();
+        }
       } else {
-        const signed = await signAndExecute({ transaction, chain: `sui:${SUI_NETWORK}` });
-        setStatus({ kind: "submitted", digest: signed.digest });
-        setStatus({ kind: "finalizing", digest: signed.digest });
-        digest = signed.digest;
+        digest = await runDirect();
       }
 
       const res = await client.waitForTransaction({
