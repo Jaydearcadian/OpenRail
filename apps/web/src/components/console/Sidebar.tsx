@@ -1,7 +1,7 @@
 import { useContext } from "react";
 import { SuiClientContext } from "@mysten/dapp-kit";
 import { CONSOLE_NAV, type ConsoleRoute } from "./routes";
-import { OPENRAILS_PACKAGE_ID, SUI_NETWORK } from "../../config";
+import { OPENRAILS_PACKAGE_ID, SUI_NETWORK, GITHUB_REPO_URL, GITHUB_DOCS_URL, explorerObjectUrl } from "../../config";
 
 interface SidebarProps {
   activeRoute: ConsoleRoute;
@@ -20,7 +20,7 @@ export function Sidebar({ activeRoute, mobileOpen, onNavigate }: SidebarProps) {
   return (
     <aside className={`side ${mobileOpen ? "open" : ""}`} aria-label="Navigation">
       <div className="side-top">
-        <div className="brand"><span className="glyph" aria-hidden="true" />openrails</div>
+        <a className="brand" href="/" title="Back to home"><span className="glyph" aria-hidden="true" />openrails</a>
         <div className="net">
           <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
             <span className="dot live" style={{ background: "var(--green)" }} aria-hidden="true" />
@@ -51,6 +51,11 @@ export function Sidebar({ activeRoute, mobileOpen, onNavigate }: SidebarProps) {
         ))}
       </nav>
 
+      <div className="side-links">
+        <a href={GITHUB_REPO_URL} target="_blank" rel="noreferrer">github</a>
+        <a href={GITHUB_DOCS_URL} target="_blank" rel="noreferrer">docs</a>
+        <a href={explorerObjectUrl(OPENRAILS_PACKAGE_ID)} target="_blank" rel="noreferrer">package</a>
+      </div>
       <div className="side-bot">
         <span className="dot live" style={{ background: "var(--green)" }} aria-hidden="true" />
         gateway · receipts authoritative

@@ -1,10 +1,55 @@
-# OpenRails V1
+# OpenRails V1.2
 
 **Intent-Driven Clearing & Settlement Infrastructure for the Machine Economy**
 
 OpenRails converts financial agreements into stateless, cryptographically signed **Permission Envelopes** that initialize isolated **streaming channels** on Sui. Every channel is a single-writer Owned Object — bypassing global consensus sequencing and enabling AI agent swarms to settle concurrently at sub-second latency.
 
-Permission Envelope signatures now cover canonical, domain-separated JSON bytes with recursive key ordering. Verification checks canonical signatures first and falls back to the legacy JSON form for existing tokens.
+Permission Envelope signatures cover canonical, domain-separated JSON bytes with recursive key ordering. V1.2 adds replay-safe **nonce lanes** and a canonical **metadata hash** bound at mint, plus payer-signed **access credentials**.
+
+---
+
+## Live on Sui Testnet
+
+| Surface | Where | Status |
+|---|---|---|
+| **Console (web app)** | https://openrails-console.pages.dev | Live |
+| **Move package (V1.2)** | [`0x4a42fd…72b2c`](https://suiexplorer.com/object/0x4a42fd8493d0929879b2cbd4e19226468867f2c4a4dece8a59d317911d172b2c?network=testnet) | Published, testnet |
+| **Receipt API (Worker)** | https://openrails-receipt-api.microcosm.workers.dev | Live |
+| **Repo** | https://github.com/Jaydearcadian/OpenRail | — |
+
+### What is real vs. reference
+
+OpenRails is explicit about its trust boundary — the Console surfaces this too:
+
+- **Authoritative (on-chain):** Paycard channels, `claim`/`cancel`/`resolve`, and `SettlementReceipt` events are real testnet transactions. Receipts are the canonical accounting source.
+- **Live services:** the Console reads channels and terminal receipts from the deployed Worker; wallet + Google (zkLogin) writes submit real testnet transactions.
+- **Projection (UX only):** gateway accrual heartbeats are signed off-chain estimates for display — never the source of truth.
+- **Optional / reference:** Walrus metadata anchoring and DeepBook inline swaps are wired in the SDK; fill in network IDs before use.
+
+### Gas sponsorship & onboarding
+
+Google (zkLogin) sign-in needs no extension and no seed phrase. When the Enoki portal has sponsorship enabled and the OpenRails move-call targets allowlisted, signed-in users transact **gas-free** (JWT mode — no per-user wallet registration). Note: sponsorship covers gas only; a funded RailsCard still streams the payer's own SUI. New users with no SUI can claim channels and issue RailsFlow invoices entirely gas-free.
+
+---
+
+## Console App (`apps/web`)
+
+The operator console for creating and monitoring rails.
+
+- **Create a rail** — RailsCard (outbound grant, funded now) or RailsFlow (inbound invoice, funded by the payer). Both produce a shareable link with a scannable QR.
+- **Deep links** — `/r/<paycardId>` opens a claim view; `/i#<terms>` opens a fund-invoice view.
+- **Rails & receipts** — live channels and human-readable settlement receipts from the Worker.
+- **Wallet** — Sui wallets (Slush/Suiet) or Google zkLogin; one-click switch to Sui testnet.
+
+```bash
+cd apps/web
+npm install
+cp .env.example .env.local   # set package id, Worker URL, Enoki + Google client ids
+npm run dev                  # http://localhost:5173
+npm run build                # production bundle (Cloudflare Pages)
+```
+
+Deep-link SPA routes need a fallback (`public/_redirects` → `/* /index.html 200`), already included.
 
 ---
 

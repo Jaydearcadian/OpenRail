@@ -31,6 +31,12 @@ export const ENOKI_REDIRECT_URL = typeof window !== "undefined" ? window.locatio
 
 export const SUI_COIN_TYPE = "0x2::sui::SUI";
 
+// ── Project links (surfaced in landing / console / docs) ─────────────────────
+export const GITHUB_REPO_URL = "https://github.com/Jaydearcadian/OpenRail";
+export const GITHUB_DOCS_URL = `${GITHUB_REPO_URL}/tree/main/docs`;
+export const GITHUB_SDK_URL = `${GITHUB_REPO_URL}/tree/main/sdk`;
+export const CONSOLE_URL = "https://openrails-console.pages.dev";
+
 /** Testnet faucet (operator can self-fund a zkLogin / wallet address). */
 export const SUI_FAUCET_URL = "https://faucet.sui.io/?network=testnet";
 
