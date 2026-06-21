@@ -41,3 +41,45 @@ export async function fetchPaycard(client: SuiClient, id: string): Promise<Payca
   const res = await client.getObject({ id, options: { showContent: true } });
   return readPaycard(id, res.data?.content);
 }
+
+/** Settlement outcome read from a SettlementReceipt event. */
+export const SETTLEMENT_TYPE: Record<number, string> = { 0: "depleted", 1: "expired", 2: "cancelled" };
+
+export interface ReceiptView {
+  paidMist: string;
+  residualMist: string;
+  initialMist: string;
+  settlementType: number;
+}
+
+function sameId(a: string, b: string): boolean {
+  try { return BigInt(a) === BigInt(b); } catch { return a.toLowerCase() === b.toLowerCase(); }
+}
+
+/**
+ * Read a paycard's SettlementReceipt directly from chain (no Worker dependency).
+ * Scans recent SettlementReceipt events for the package and matches by paycard id.
+ */
+export async function fetchReceiptForPaycard(
+  client: SuiClient,
+  packageId: string,
+  paycardId: string,
+): Promise<ReceiptView | null> {
+  const res = await client.queryEvents({
+    query: { MoveEventType: `${packageId}::events::SettlementReceipt` },
+    limit: 50,
+    order: "descending",
+  });
+  for (const ev of res.data) {
+    const p = ev.parsedJson as Record<string, unknown> | undefined;
+    if (p && typeof p.paycard_id === "string" && sameId(p.paycard_id, paycardId)) {
+      return {
+        paidMist: String(p.total_paid_to_recipient ?? "0"),
+        residualMist: String(p.residual_returned_to_payer ?? "0"),
+        initialMist: String(p.initial_allocation ?? "0"),
+        settlementType: Number(p.settlement_type ?? 0),
+      };
+    }
+  }
+  return null;
+}

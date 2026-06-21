@@ -153,11 +153,9 @@ function FlowView({ terms }: { terms: FlowTerms }) {
       recipient: terms.recipient,
       durationSeconds: terms.durationSec,
       recovery: terms.recovery,
+      kind: "RailsFlow",
     });
-    if (result) {
-      setDone(result);
-      if (result.paycardId) recordChannel({ id: result.paycardId, role: "payer", kind: "RailsFlow" });
-    }
+    if (result) setDone(result);
   };
 
   return (

@@ -289,6 +289,10 @@ tr.row-active { background: var(--blue-soft); }
 .import-row { display: flex; gap: 8px; margin-bottom: 16px; }
 .import-row input { flex: 1; padding: 9px 11px; border: 1px solid var(--line); border-radius: 8px; font-size: 12.5px; background: var(--panel); color: var(--ink); }
 .import-row input:focus { outline: none; border-color: var(--blue); }
+.settled-receipt { margin-top: 6px; display: grid; gap: 8px; }
+.sr-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+.sr-grid span { display: block; font-family: var(--font-mono); font-size: 10px; color: var(--ink-3); text-transform: uppercase; }
+.sr-grid b { font-size: 13px; font-weight: 600; }
 
 .act-link { font-family: var(--font-mono); font-size: 12px; color: var(--blue); }
 .act-link:hover { text-decoration: underline; }

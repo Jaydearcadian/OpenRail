@@ -2,15 +2,16 @@ import { useCallback, useEffect, useState } from "react";
 import { useSuiClient } from "@mysten/dapp-kit";
 import { useChannelWrite } from "../../hooks/useChannelWrite";
 import { listChannels, forgetChannel, recordChannel, type MyChannelEntry } from "../../lib/myChannels";
-import { fetchPaycard, PAYCARD_STATUS, type PaycardView } from "../../lib/paycard";
+import { fetchPaycard, fetchReceiptForPaycard, PAYCARD_STATUS, SETTLEMENT_TYPE, type PaycardView, type ReceiptView } from "../../lib/paycard";
 import { suiGlyph, humanRate, humanDuration, clockOf, shortId } from "../../lib/format";
-import { explorerObjectUrl, explorerTxUrl } from "../../config";
+import { explorerObjectUrl, explorerTxUrl, OPENRAILS_PACKAGE_ID } from "../../config";
 import { railCardUrl } from "../../lib/raillink";
 import { ShareLink } from "./ShareLink";
 
 interface Loaded {
   entry: MyChannelEntry;
   view: PaycardView | null;
+  receipt?: ReceiptView | null;
   error?: string;
 }
 
@@ -18,7 +19,7 @@ function ChannelCard({ loaded, onChanged }: { loaded: Loaded; onChanged: () => v
   const w = useChannelWrite();
   const [confirm, setConfirm] = useState<"cancel" | "resolve" | null>(null);
   const [showShare, setShowShare] = useState(false);
-  const { entry, view, error } = loaded;
+  const { entry, view, error, receipt } = loaded;
   const busy = ["pending-signature", "submitted", "finalizing"].includes(w.status.kind);
 
   if (error || !view) {
@@ -87,8 +88,18 @@ function ChannelCard({ loaded, onChanged }: { loaded: Loaded; onChanged: () => v
           {isPayer ? <button type="button" className="btn btn-ghost" disabled={busy} onClick={() => act("resolve")}>{confirm === "resolve" ? "confirm resolve" : "resolve"}</button> : null}
           {entry.kind === "RailsCard" ? <button type="button" className="btn btn-ghost" onClick={() => setShowShare((v) => !v)}>{showShare ? "hide link" : "share link"}</button> : null}
         </div>
+      ) : receipt ? (
+        <div className="settled-receipt">
+          <div className="rc-l">terminal receipt · {SETTLEMENT_TYPE[receipt.settlementType] ?? receipt.settlementType}</div>
+          <div className="sr-grid">
+            <div><span>paid → recipient</span><b>{suiGlyph(receipt.paidMist)}</b></div>
+            <div><span>residual → payer</span><b>{suiGlyph(receipt.residualMist)}</b></div>
+            <div><span>allocation</span><b>{suiGlyph(receipt.initialMist)}</b></div>
+          </div>
+          <div className="rc-conserve ok">✓ conserved · also indexed to Receipts within ~5 min</div>
+        </div>
       ) : (
-        <div className="rc-conserve ok">settled — see Receipts for the terminal record.</div>
+        <div className="rc-conserve ok">settled — terminal receipt indexing (refresh shortly).</div>
       )}
 
       {w.status.kind === "confirmed" ? <div className="status-line ok" style={{ marginTop: 10 }}>done · <a href={explorerTxUrl(w.status.digest)} target="_blank" rel="noreferrer">view tx →</a></div> : null}
@@ -108,7 +119,13 @@ export function ChannelsPanel() {
     const loaded = await Promise.all(
       entries.map(async (entry): Promise<Loaded> => {
         try {
-          return { entry, view: await fetchPaycard(client, entry.id) };
+          const view = await fetchPaycard(client, entry.id);
+          // Settled channel → read its terminal receipt straight from chain
+          // (no dependency on the Worker's 5-min receipt indexer).
+          const receipt = view && view.status !== 0
+            ? await fetchReceiptForPaycard(client, OPENRAILS_PACKAGE_ID, entry.id)
+            : null;
+          return { entry, view, receipt };
         } catch (e) {
           return { entry, view: null, error: e instanceof Error ? e.message : String(e) };
         }

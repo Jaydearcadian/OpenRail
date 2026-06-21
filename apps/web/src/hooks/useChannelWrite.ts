@@ -9,6 +9,7 @@ import {
 import { EnokiClient, isEnokiWallet, getSession } from "@mysten/enoki";
 import { Transaction } from "@mysten/sui/transactions";
 import { fromBase64, toBase64 } from "@mysten/sui/utils";
+import { recordChannel } from "../lib/myChannels";
 import {
   buildMintPTB,
   buildClaimPTB,
@@ -47,6 +48,7 @@ export interface OpenRailParams {
   recovery: string;
   metadataHash?: Uint8Array;
   nonceChannel?: bigint;
+  kind?: "RailsCard" | "RailsFlow";
 }
 
 type TxResult = Awaited<ReturnType<ReturnType<typeof useSuiClient>["waitForTransaction"]>>;
@@ -238,6 +240,8 @@ export function useChannelWrite() {
         }
 
         const paycardId = createdObjectId(res, "::paycard_v1::Paycard");
+        // Remember the channel we just opened/funded so it appears under "My channels".
+        if (paycardId) recordChannel({ id: paycardId, role: "payer", kind: params.kind ?? "RailsCard" });
         setStatus({ kind: "confirmed", digest: res.digest, objectId: paycardId });
         return { paycardId, digest: res.digest };
       } catch (error) {
