@@ -110,13 +110,16 @@ export function useChannelWrite() {
           transactionKindBytes: toBase64(kindBytes),
           jwt,
         });
-        const { signature } = await signTransaction({ transaction: Transaction.from(fromBase64(created.bytes)) });
+        const { signature } = await signTransaction({
+          transaction: Transaction.from(fromBase64(created.bytes)),
+          chain: `sui:${SUI_NETWORK}`,
+        });
         setStatus({ kind: "submitted", digest: created.digest });
         setStatus({ kind: "finalizing", digest: created.digest });
         await enokiClient.executeSponsoredTransaction({ digest: created.digest, signature });
         digest = created.digest;
       } else {
-        const signed = await signAndExecute({ transaction });
+        const signed = await signAndExecute({ transaction, chain: `sui:${SUI_NETWORK}` });
         setStatus({ kind: "submitted", digest: signed.digest });
         setStatus({ kind: "finalizing", digest: signed.digest });
         digest = signed.digest;

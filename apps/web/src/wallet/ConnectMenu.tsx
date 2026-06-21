@@ -5,9 +5,11 @@ import {
   useCurrentAccount,
   useDisconnectWallet,
   useSuiClientQuery,
+  useSuiClientContext,
 } from "@mysten/dapp-kit";
 import { isEnokiWallet } from "@mysten/enoki";
 import type { WalletWithRequiredFeatures } from "@mysten/wallet-standard";
+import { SUI_NETWORK } from "../config";
 
 function short(address: string): string {
   return `${address.slice(0, 6)}…${address.slice(-4)}`;
@@ -21,9 +23,22 @@ function formatSui(mist: string | undefined): string {
   return frac ? `${whole}.${frac}` : whole.toString();
 }
 
+/** True when the app's active Sui network matches the target (testnet). */
+function useNetworkState() {
+  const ctx = useSuiClientContext();
+  const account = useCurrentAccount();
+  const onAppNetwork = ctx.network === SUI_NETWORK;
+  // A Sui wallet signs for whatever chain the dApp requests; we only flag a hard
+  // mismatch when the connected account doesn't list our target chain at all.
+  const walletSupports = !account || account.chains.some((c) => c === `sui:${SUI_NETWORK}`);
+  const switchToTarget = () => ctx.selectNetwork(SUI_NETWORK);
+  return { network: ctx.network, onTarget: onAppNetwork, walletSupports, switchToTarget };
+}
+
 function ConnectedChip({ address }: { address: string }) {
   const { data } = useSuiClientQuery("getBalance", { owner: address });
   const { mutate: disconnect } = useDisconnectWallet();
+  const { network, onTarget, walletSupports, switchToTarget } = useNetworkState();
   const [open, setOpen] = useState(false);
   const [copied, setCopied] = useState(false);
 
@@ -32,6 +47,17 @@ function ConnectedChip({ address }: { address: string }) {
       setCopied(true);
       setTimeout(() => setCopied(false), 1500);
     });
+  }
+
+  // Wrong network → the button itself becomes a one-click switch to testnet.
+  if (!onTarget || !walletSupports) {
+    return (
+      <div className="connect-wrap">
+        <button type="button" className="btn btn-primary connect-btn net-warn" onClick={switchToTarget} title={!walletSupports ? `If this persists, switch your wallet to Sui ${SUI_NETWORK}.` : undefined}>
+          ⚠ Switch to Sui {SUI_NETWORK}
+        </button>
+      </div>
+    );
   }
 
   return (
@@ -44,6 +70,14 @@ function ConnectedChip({ address }: { address: string }) {
       {open ? (
         <div className="connect-menu" role="menu">
           <div className="connect-menu-head mono" style={{ userSelect: "all" }}>{address}</div>
+          <div className="connect-menu-net">
+            network · <b>{network}</b>{!walletSupports ? " · wallet may not support it" : ""}
+          </div>
+          {network !== SUI_NETWORK ? (
+            <button type="button" className="connect-menu-item" onClick={() => { switchToTarget(); setOpen(false); }}>
+              Switch to Sui {SUI_NETWORK}
+            </button>
+          ) : null}
           <button type="button" className="connect-menu-item" onClick={copy}>
             {copied ? "Copied!" : "Copy address"}
           </button>

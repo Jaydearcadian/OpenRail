@@ -1,32 +1,19 @@
-import { useContext, useEffect, useState } from "react";
-import { useCurrentAccount, SuiClientContext } from "@mysten/dapp-kit";
+import { useContext, useEffect } from "react";
+import { SuiClientContext } from "@mysten/dapp-kit";
+import { SUI_NETWORK } from "../config";
 
+/**
+ * Keeps the app's Sui client on the target network (testnet). This is the
+ * "automatic" half; the ConnectMenu exposes an explicit "Switch to Sui testnet"
+ * control for the manual case and surfaces a warning when a connected wallet
+ * doesn't support the target chain.
+ */
 export function NetworkSync() {
-  const account = useCurrentAccount();
   const ctx = useContext(SuiClientContext);
-  const [wrongNet, setWrongNet] = useState(false);
 
   useEffect(() => {
-    if (!ctx) return;
-    ctx.selectNetwork("testnet");
+    if (ctx && ctx.network !== SUI_NETWORK) ctx.selectNetwork(SUI_NETWORK);
   }, [ctx]);
 
-  useEffect(() => {
-    if (!account) { setWrongNet(false); return; }
-    const onTestnet = account.chains.some((c) => c === "sui:testnet");
-    setWrongNet(!onTestnet);
-  }, [account]);
-
-  if (!wrongNet) return null;
-
-  return (
-    <div style={{
-      position: "fixed", bottom: 12, left: "50%", transform: "translateX(-50%)",
-      background: "#c0392b", color: "#fff", padding: "8px 16px",
-      borderRadius: 4, fontSize: 13, fontFamily: "var(--font-mono, monospace)",
-      zIndex: 9999, pointerEvents: "none",
-    }}>
-      wallet is on wrong network — switch to Sui Testnet
-    </div>
-  );
+  return null;
 }

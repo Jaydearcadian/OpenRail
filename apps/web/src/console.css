@@ -209,6 +209,10 @@ table.dt tbody tr.static:hover td { background: transparent; }
 .connect-menu-item { display: flex; align-items: center; gap: 10px; width: 100%; text-align: left; padding: 9px 10px; border-radius: 7px; font-size: 13px; }
 .connect-menu-item:hover { background: var(--panel-2); }
 .connect-menu-empty { padding: 9px 10px; color: var(--ink-3); font-size: 12px; }
+.connect-menu-net { padding: 6px 10px 8px; font-family: var(--font-mono); font-size: 11px; color: var(--ink-3); }
+.connect-menu-net b { color: var(--ink); }
+.connect-btn.net-warn { background: var(--amber); border-color: var(--amber); }
+.connect-btn.net-warn:hover { filter: brightness(0.96); }
 
 /* rail type selector (RailsCard / RailsFlow) */
 .kseg { display: flex; gap: 10px; margin-bottom: 18px; }
