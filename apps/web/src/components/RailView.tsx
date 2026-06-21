@@ -82,6 +82,7 @@ function CardView({ paycardId }: { paycardId: string }) {
   const isRecipient = w.address && pc && w.address.toLowerCase() === pc.recipient.toLowerCase();
   const isPayer = w.address && pc && w.address.toLowerCase() === pc.payer.toLowerCase();
   const active = pc?.status === 0;
+  const expired = !!pc && pc.startSec > 0 && Date.now() / 1000 > pc.startSec + pc.durationSec;
   const busy = ["pending-signature", "submitted", "finalizing"].includes(w.status.kind);
 
   const claim = async () => { recordChannel({ id: paycardId, role: "recipient", kind: "RailsCard" }); await w.claim(paycardId); await load(); };
@@ -111,6 +112,11 @@ function CardView({ paycardId }: { paycardId: string }) {
 
           {!w.address ? (
             <div className="rv-cta"><p>Connect the recipient wallet to claim.</p><ConnectMenu /></div>
+          ) : active && expired ? (
+            <>
+              <div className="status-line warn">stream window ended — settle to finalize (pays accrued to recipient, residual to recovery).</div>
+              <button type="button" className="btn btn-primary" disabled={busy} onClick={() => settle("resolve")}>settle (resolve) →</button>
+            </>
           ) : isRecipient && active ? (
             <button type="button" className="btn btn-primary" disabled={busy} onClick={claim}>claim what's streamed →</button>
           ) : isPayer && active ? (

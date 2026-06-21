@@ -212,7 +212,10 @@ export function useChannelWrite() {
             totalProvisionAmount: params.amount,
             maxFlowRatePerSecond: params.rate,
             recipient: params.recipient,
-            startTimestamp: 0,
+            // Start the stream window now. mint_and_fund_envelope stores this
+            // literally (no "0 = start at open" sentinel), so 0 would place the
+            // whole window in 1970 — instantly expired and unclaimable.
+            startTimestamp: Math.floor(Date.now() / 1000),
             durationSeconds: params.durationSeconds,
             recoveryTarget: params.recovery,
             typeArgument: SUI_COIN_TYPE,

@@ -32,6 +32,7 @@ function ChannelCard({ loaded, onChanged }: { loaded: Loaded; onChanged: () => v
   }
 
   const active = view.status === 0;
+  const expired = view.startSec > 0 && Date.now() / 1000 > view.startSec + view.durationSec;
   const me = w.address?.toLowerCase();
   const isRecipient = me && me === view.recipient.toLowerCase();
   const isPayer = me && me === view.payer.toLowerCase();
@@ -74,7 +75,12 @@ function ChannelCard({ loaded, onChanged }: { loaded: Loaded; onChanged: () => v
         <div><div className="rc-l">role</div><div className="rc-v">{entry.role}</div></div>
       </div>
 
-      {active ? (
+      {active && expired ? (
+        <div className="rc-actions">
+          <div className="rc-conserve" style={{ background: "var(--amber-soft)", color: "oklch(0.5 0.12 60)", flex: 1 }}>stream window ended — settle to finalize</div>
+          <button type="button" className="btn btn-primary" disabled={busy} onClick={() => act("resolve")}>{confirm === "resolve" ? "confirm settle" : "settle (resolve)"}</button>
+        </div>
+      ) : active ? (
         <div className="rc-actions">
           {isRecipient ? <button type="button" className="btn btn-primary" disabled={busy} onClick={() => act("claim")}>claim streamed</button> : null}
           {isPayer ? <button type="button" className="btn btn-ghost" disabled={busy} onClick={() => act("cancel")}>{confirm === "cancel" ? "confirm cancel" : "cancel"}</button> : null}
