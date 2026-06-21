@@ -65,6 +65,12 @@ function classifyError(error: unknown): WriteStatus {
   const message = error instanceof Error ? error.message : String(error);
   if (/reject|denied|cancel/i.test(message)) return { kind: "rejected" };
   if (/E_NONCE_MISMATCH|402|nonce/i.test(message)) return { kind: "stale-nonce" };
+  if (/no valid gas|gas coin|insufficient.*gas|InsufficientGas|gas budget/i.test(message)) {
+    return { kind: "failed", message: "No testnet SUI for gas. Fund this address at faucet.sui.io (testnet), switch your wallet to Sui Testnet, or sign in with Google for sponsored gas." };
+  }
+  if (/redefine property: ethereum|cannot set property ethereum|provider injection|isZerion|window\.ethereum/i.test(message)) {
+    return { kind: "failed", message: "A browser wallet-extension conflict blocked signing. Disable extra wallet extensions (MetaMask / Zerion / Rabby) or use Google sign-in, then retry." };
+  }
   return { kind: "failed", message };
 }
 
@@ -159,10 +165,13 @@ export function useChannelWrite() {
       }
       try {
         // Funding coin: a SUI coin object the payer owns (Move splits `amount` from it).
+        // Non-sponsored writes also pay gas from this balance, so require a small
+        // headroom on top of the allocation; sponsored (zkLogin) writes pay no gas.
+        const gasBuffer = sponsored ? 0n : 20_000_000n; // ~0.02 SUI for nonce + mint gas
         const coins = await client.getCoins({ owner: account.address, coinType: SUI_COIN_TYPE });
         const total = coins.data.reduce((sum, c) => sum + BigInt(c.balance), 0n);
-        if (total < params.amount) {
-          setStatus({ kind: "insufficient-balance", need: params.amount, have: total });
+        if (total < params.amount + gasBuffer) {
+          setStatus({ kind: "insufficient-balance", need: params.amount + gasBuffer, have: total });
           return null;
         }
         const funding = [...coins.data].sort((a, b) => (BigInt(b.balance) > BigInt(a.balance) ? 1 : -1))[0];
@@ -213,7 +222,7 @@ export function useChannelWrite() {
         return null;
       }
     },
-    [account, client, ensureNonceAccount, exec, onNetwork],
+    [account, client, ensureNonceAccount, exec, onNetwork, sponsored],
   );
 
   const lifecycle = useCallback(
