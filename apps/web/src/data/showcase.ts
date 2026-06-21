@@ -180,6 +180,9 @@ function mapStreamDetail(stream: Stream, bundle: OpenRailsStreamBundle, receipts
       : "No stream projection returned by Worker",
     safetyNote: "Gateway values are signed projections for UX. SettlementReceipt records remain the authoritative accounting source.",
     receiptDigest: receipt ? shorten(receiptDigest(receipt)) : undefined,
+    ratePerSecMist: receipt?.maxFlowRatePerSecond,
+    startTimestampSec: receipt?.startTimestamp,
+    endTimestampSec: receipt?.closedAtSeconds,
   };
 }
 

@@ -61,6 +61,9 @@ export interface StreamDetail {
   receiptDigest?: string;
   region: "Payer client" | "Sui object" | "Gateway projection" | "Receipt index";
   asOf: string;
+  ratePerSecMist?: string;
+  startTimestampSec?: number;
+  endTimestampSec?: number;
 }
 
 export interface CreatePreview {

@@ -10,7 +10,7 @@ SUI_RPC_URL = "https://fullnode.testnet.sui.io:443"
 # V1.1 and V1.2 — so moving to V1.2 is a one-line repoint here + redeploy (no schema
 # or code change). Current value = V1.1 cut. After publishing V1.2
 # (scripts/publish-v1-2.sh), set this to the new package id to index V1.2 receipts.
-OPENRAILS_PACKAGE_ID = "0x7cb4ca17166b7999223d665db2e43991288b1fd8466b930e4c2a345e847aaf55"
+OPENRAILS_PACKAGE_ID = "0x4a42fd8493d0929879b2cbd4e19226468867f2c4a4dece8a59d317911d172b2c"
 
 # Set deployment secrets outside git:
 # wrangler secret put GATEWAY_PUBLIC_KEY_HEX

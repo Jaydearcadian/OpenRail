@@ -1,5 +1,43 @@
+import { useEffect, useState } from "react";
 import type { LiveDashboardData } from "../../data/showcase";
+import type { StreamDetail } from "../../types/dashboard";
 import { streamBadge, progressPct, type SurfaceStatus } from "./railHelpers";
+
+function StreamMeter({ detail }: { detail: StreamDetail }) {
+  const [display, setDisplay] = useState<string | null>(null);
+
+  useEffect(() => {
+    const { ratePerSecMist, startTimestampSec, endTimestampSec } = detail;
+    if (!ratePerSecMist || !startTimestampSec) return;
+
+    const rateSui = Number(ratePerSecMist) / 1e9;
+    const now = Date.now() / 1000;
+    const isSettled = now > endTimestampSec!;
+
+    if (isSettled && endTimestampSec !== undefined) {
+      const finalSui = rateSui * (endTimestampSec - startTimestampSec);
+      const t0 = performance.now();
+      const duration = 1800;
+      const frame = (ts: number) => {
+        const p = Math.min((ts - t0) / duration, 1);
+        const ease = 1 - Math.pow(1 - p, 3);
+        setDisplay(`◎${(finalSui * ease).toFixed(6)}`);
+        if (p < 1) requestAnimationFrame(frame);
+      };
+      requestAnimationFrame(frame);
+    } else {
+      const tick = () => {
+        const elapsed = Math.max(0, Date.now() / 1000 - startTimestampSec);
+        setDisplay(`◎${(rateSui * elapsed).toFixed(6)}`);
+      };
+      tick();
+      const id = setInterval(tick, 1000);
+      return () => clearInterval(id);
+    }
+  }, [detail.ratePerSecMist, detail.startTimestampSec, detail.endTimestampSec]);
+
+  return <div className="big">{display ?? detail.accrued}</div>;
+}
 
 interface RailsPanelProps {
   live: LiveDashboardData | null;
@@ -44,8 +82,14 @@ export function RailsPanel({ live, status, error, search, selectedId, onSelect }
         <div className="stream-card">
           {detail ? (
             <>
-              <div className="l">projected accrued · gateway estimate</div>
-              <div className="big">{detail.accrued}</div>
+              <div className="l">
+                {detail.ratePerSecMist
+                  ? detail.endTimestampSec && Date.now() / 1000 > detail.endTimestampSec
+                    ? "settled · terminal receipt"
+                    : "accruing · live estimate"
+                  : "projected accrued · gateway estimate"}
+              </div>
+              <StreamMeter detail={detail} />
               <div className="rate">{detail.rate} · capital-bounded</div>
               <div className="strack"><i style={{ width: `${progressPct(detail)}%` }} /></div>
               <div className="smeta">

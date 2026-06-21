@@ -11,6 +11,7 @@ import "@fontsource/ibm-plex-sans/latin-700.css";
 import "@fontsource/ibm-plex-mono/latin-400.css";
 import "@fontsource/ibm-plex-mono/latin-700.css";
 import App from "./App";
+import { NetworkSync } from "./wallet/NetworkSync";
 import "./console.css";
 import {
   SUI_NETWORK,
@@ -58,6 +59,7 @@ createRoot(document.getElementById("root")!).render(
       <SuiClientProvider networks={networks} defaultNetwork={SUI_NETWORK}>
         <EnokiRegistrar />
         <WalletProvider autoConnect>
+          <NetworkSync />
           <App />
         </WalletProvider>
       </SuiClientProvider>

@@ -1,3 +1,5 @@
+import { useContext } from "react";
+import { SuiClientContext } from "@mysten/dapp-kit";
 import { CONSOLE_NAV, type ConsoleRoute } from "./routes";
 import { OPENRAILS_PACKAGE_ID, SUI_NETWORK } from "../../config";
 
@@ -12,6 +14,9 @@ function shortPkg(id: string): string {
 }
 
 export function Sidebar({ activeRoute, mobileOpen, onNavigate }: SidebarProps) {
+  const clientCtx = useContext(SuiClientContext);
+  const activeNetwork = clientCtx?.network ?? SUI_NETWORK;
+
   return (
     <aside className={`side ${mobileOpen ? "open" : ""}`} aria-label="Navigation">
       <div className="side-top">
@@ -19,7 +24,7 @@ export function Sidebar({ activeRoute, mobileOpen, onNavigate }: SidebarProps) {
         <div className="net">
           <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
             <span className="dot live" style={{ background: "var(--green)" }} aria-hidden="true" />
-            sui:{SUI_NETWORK}
+            sui:{activeNetwork}
           </span>
           <span className="mut">pkg {shortPkg(OPENRAILS_PACKAGE_ID)}</span>
         </div>

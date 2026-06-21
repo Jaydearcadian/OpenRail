@@ -1,5 +1,7 @@
 # OpenRails web — wallet writes + e2e
 
+> **Tailoring plan in progress (Parts A–E):** Human units (SUI/sec), automatic network switching, RailsCard browser flow (sealed vault + bearer link), shareable QR links, and an animated stream meter are planned but not yet implemented. The sections below reflect the current Console app; this file will be updated when those features land.
+
 The dashboard can open/claim/cancel/resolve real channels via **@mysten/dapp-kit**
 (Sui wallet connect) + **@mysten/enoki** (Google/Facebook/Twitch zkLogin with sponsored
 gas). This is an operator runbook — you provide the secrets and run the live flow.

@@ -14,7 +14,7 @@ export const SUI_NETWORK: SuiNetwork = env.VITE_SUI_NETWORK === "mainnet" ? "mai
 /** OpenRails Move package id used for writes. Defaults to the V1.1 cut until V1.2 is published. */
 export const OPENRAILS_PACKAGE_ID =
   env.VITE_OPENRAILS_PACKAGE_ID?.trim() ||
-  "0x7cb4ca17166b7999223d665db2e43991288b1fd8466b930e4c2a345e847aaf55";
+  "0x4a42fd8493d0929879b2cbd4e19226468867f2c4a4dece8a59d317911d172b2c";
 
 // ── Enoki zkLogin (sponsored social onboarding) ──────────────────────────────
 export const ENOKI_API_KEY = env.VITE_ENOKI_API_KEY?.trim() ?? "";

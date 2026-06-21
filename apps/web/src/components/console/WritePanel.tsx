@@ -36,7 +36,7 @@ function StatusLine({ status }: { status: WriteStatus }) {
 export function WritePanel() {
   const w = useChannelWrite();
   const [amount, setAmount] = useState("0.05");
-  const [rate, setRate] = useState("500000");
+  const [rate, setRate] = useState("0.0005");
   const [duration, setDuration] = useState("120");
   const [recipient, setRecipient] = useState("");
   const [recovery, setRecovery] = useState("");
@@ -62,7 +62,7 @@ export function WritePanel() {
     e.preventDefault();
     setCreated(null);
     const amt = suiToMist(amount);
-    const rateMist = /^\d+$/.test(rate.trim()) ? BigInt(rate.trim()) : null;
+    const rateMist = suiToMist(rate);
     const dur = /^\d+$/.test(duration.trim()) ? Number(duration.trim()) : NaN;
     if (amt === null || rateMist === null || Number.isNaN(dur)) return;
     const result = await w.open({ amount: amt, rate: rateMist, recipient: recipient.trim() || self, durationSeconds: dur, recovery: recovery.trim() || self });
@@ -82,7 +82,7 @@ export function WritePanel() {
       <div className="pb">
         <form className="form" onSubmit={submit}>
           <label>allocation (SUI)<input value={amount} onChange={(e) => setAmount(e.target.value)} inputMode="decimal" /></label>
-          <label>rate (MIST/sec)<input value={rate} onChange={(e) => setRate(e.target.value)} inputMode="numeric" /></label>
+          <label>rate (SUI/sec)<input value={rate} onChange={(e) => setRate(e.target.value)} inputMode="decimal" /></label>
           <label>duration (sec)<input value={duration} onChange={(e) => setDuration(e.target.value)} inputMode="numeric" /></label>
           <label>recipient<input value={recipient} onChange={(e) => setRecipient(e.target.value)} placeholder="you" /></label>
           <label className="full">recovery target<input value={recovery} onChange={(e) => setRecovery(e.target.value)} placeholder="you" /></label>

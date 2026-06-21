@@ -1,27 +1,32 @@
 # OpenRails Handoff
 
-Last updated: 2026-06-20 (V1.2 nonce-lane on-chain foundation + V2 spec lock)
+Last updated: 2026-06-21 (V1.2 full stack + Console frontend)
 
 ## Current release state
 
-OpenRails V1.1 is committed locally and tagged as `v1.1.0-testnet`. The tag points at:
+OpenRails V1.1 is tagged as `v1.1.0-testnet` (commit `cae801a`). The active working branch is `console-app`, which contains the full V1.2 implementation on top of V1.1.
+
+Recent commits on `console-app`:
 
 ```text
-cae801a Harden release staging hygiene
+6f86ae6  Replace frontend with the Console operator app (no narrative)
+3459462  Merge branch 'v1-2-access-credentials' into console-app
+10a5450  Add V1.2 access credentials (payer-signed) — SDK + Worker + CLI
+80e06ed  Add web wallet write surface (dApp Kit + Enoki zkLogin)
+aa20f0b  Add V1.2 product-receipt layer (SDK) + Worker nonce route
+cf909223 Add RailsCard vault CLI (open-vault/unseal)
+df0b53a  Sync SDK to V1.2 ABI; add NonceEngine + CLI writes
+3221eac  Add V1.2 nonce-lane + metadataHash on-chain foundation
+cae801a  Harden release staging hygiene                          ← v1.1.0-testnet tag
 ```
 
-Recent local commits:
+V1.2 Move package **published to testnet** on 2026-06-21.
 
-```text
-fc2155c Add V1.1 channel settlement semantics
-5309db8 Add V1.1 SDK API and CLI surface
-e38e07a Add durable receipt API projections
-7817282 Add real-data OpenRails web dashboard
-867bcc0 Record V1.1 testnet showcase proof
-cae801a Harden release staging hygiene
-```
+**V1.2 package ID:** `0x4a42fd8493d0929879b2cbd4e19226468867f2c4a4dece8a59d317911d172b2c`
+**Publish tx:** `6ofGhCShZgyFxGwk1y1Y8suEqkvVdkyxn4otD5QByYy6`
+**UpgradeCap:** `0xfb7762e267f119f0ce9ca21469e3c63323e89b73e19d0581c130c836694d578f`
 
-These commits have not been pushed in this handoff.
+`wrangler.toml` and `apps/web/src/config.ts` have been repointed to the V1.2 package. Worker needs redeployment (`npm --prefix services/receipt-api run deploy`) to index V1.2 receipts.
 
 ## What V1.1 contains
 
@@ -42,73 +47,84 @@ These commits have not been pushed in this handoff.
 
 ### SDK
 
-- `sdk/src/api.ts`
-  - Typed public Worker API client.
-- `sdk/src/proof.ts`
-  - Public proof object builder and trust boundary labels.
-- `sdk/src/browser.ts`, `sdk/src/worker.ts`
-  - Browser and Worker safe entrypoints.
-- `sdk/src/cli.ts`
-  - Public `openrails` CLI.
-- `sdk/package.json`
-  - Export map for root, `/browser`, `/worker`, `/api`.
-  - `bin.openrails` points at `dist/cli.js`.
-  - `files` allowlist limits package contents to `dist/`.
-- `sdk/scripts/*showcase*.mjs`, `sdk/scripts/gateway-operator.mjs`
-  - Testnet seeding, verifying, and gateway operation scripts.
+- `sdk/src/api.ts` — Typed public Worker API client.
+- `sdk/src/proof.ts` — Public proof object builder and trust boundary labels.
+- `sdk/src/browser.ts`, `sdk/src/worker.ts` — Browser and Worker safe entrypoints.
+- `sdk/src/cli.ts` — Public `openrails` CLI (V1.1: read-only health/receipts/streams/proofs).
+- `sdk/package.json` — Export map for root, `/browser`, `/worker`, `/api`. `bin.openrails` points at `dist/cli.js`. `files` allowlist limits package contents to `dist/`.
+- `sdk/scripts/*showcase*.mjs`, `sdk/scripts/gateway-operator.mjs` — Testnet seeding, verifying, and gateway operation scripts.
 
 ### Receipt API and gateway projection
 
-- `services/receipt-api/src/handler.ts`
-  - Public read routes for receipts, streams, and proofs.
-  - Signed gateway event collector.
-  - Admin receipt indexer trigger.
-- `services/receipt-api/src/storage.ts`
-  - D1 and in-memory receipt/gateway projection storage.
-- `services/receipt-api/src/indexer.ts`
-  - Cursor-based SettlementReceipt event indexer.
-- `services/receipt-api/migrations/0001_receipt_storage.sql`
-  - D1 schema for gateway events, paycard states, settlement receipts, and indexer state.
-- `services/receipt-api/wrangler.toml`
-  - V1.1 package configuration and scheduled indexer.
+- `services/receipt-api/src/handler.ts` — Public read routes for receipts, streams, and proofs. Signed gateway event collector. Admin receipt indexer trigger.
+- `services/receipt-api/src/storage.ts` — D1 and in-memory receipt/gateway projection storage.
+- `services/receipt-api/src/indexer.ts` — Cursor-based SettlementReceipt event indexer.
+- `services/receipt-api/migrations/0001_receipt_storage.sql` — D1 schema for gateway events, paycard states, settlement receipts, and indexer state.
+- `services/receipt-api/wrangler.toml` — V1.1 package configuration and scheduled indexer.
 
 ### Receipts and proof layer
 
 - V1.1 has an authoritative onchain `SettlementReceipt` event.
 - The SDK parses and normalizes settlement receipts as `SettlementReceiptV1` and `IndexedSettlementReceiptV1`.
 - The Worker indexes terminal settlement receipts and exposes receipt/proof routes.
-- The dashboard displays receipt records and explorer links.
 - Gateway events are signed offchain projections, not authoritative settlement receipts.
-
-### Web app
-
-- `apps/web/**`
-  - Read-only live dashboard.
-  - Consumes deployed Worker data.
-  - Shows package, paycard, receipt, stream, proof, and gateway projection boundaries.
-  - Does not connect wallets or submit transactions.
-
-#### Frontend redesign (2026-06-20 session)
-
-- The web frontend was rebuilt on the faithful light "Stream" design language.
-  - `apps/web/src/stream.css` is the single authoritative stylesheet, imported by `apps/web/src/main.tsx`. `styles.css` and `redesign.css` remain on disk but are unimported and kept only for reference/rollback.
-  - Typography: Instrument Serif (display) + Hanken Grotesk (body) + JetBrains Mono (mono), loaded via Google Fonts in `apps/web/index.html`. Warm light palette, SVG wave textures, rounded paper cards.
-- Landing (`apps/web/src/components/LandingPage.tsx`) is a marketing page: sticky navbar (blur on scroll) + mobile sheet, hero with a live accrual flowcard, i–v protocol ribbon, primitives, an honest "what's real / simulated / projection" trust block, machine-economy use cases, real testnet proof links, CTA band, and a multi-column footer (real explorer/Worker links only). Sections fade in on scroll (IntersectionObserver), reduced-motion guarded.
-- Dashboard chrome reskinned with a **collapsible sidebar**: smooth icon-rail collapse on desktop and an off-canvas drawer on mobile (`DashboardSidebar.tsx`, `DashboardTopbar.tsx` hamburger, `DashboardShell.tsx` collapse class + scrim). Streams render as Stream `.rail` rows and receipts as `.rcard` rows.
-- New clickable detail interaction: stream and receipt rows open an inspect modal (`apps/web/src/components/dashboard/InspectModal.tsx`) showing a live stream-hero, STN-Delta breakdown, proof trail, channel terms, encrypted link, and a JSON payload viewer (`apps/web/src/components/dashboard/JsonBlock.tsx`) with an explorer link. Keyboard nav: `1/2/3` switch routes, `⌘K` focuses search, `Esc` closes modals.
-- Data layer additions are additive and presentation-only: `inspect` state + `open-inspect`/`close-inspect` actions in `types/dashboard.ts` and `hooks/useMockDashboard.ts`; enriched receipt fields (payer, recipient, allocation, mist values, tx digest, explorer href) in `data/showcase.ts` and `data/mock.ts`.
-- Still strictly read-only: no wallet connect, signature, Sui write, or Walrus upload. The V1.2 roadmap (Nonce Lanes, Write Access, Access Credentials) is signaled as locked sidebar nav items.
-- Validation: `npm --prefix apps/web run typecheck` passed; `npm --prefix apps/web run build` passed.
 
 ### Testnet proof artifact
 
-- `scripts/openrails-v1-1-showcase.manifest.json`
-  - Public testnet package, flow, receipt, and transaction proof metadata.
-  - No private keys or secrets should be stored here.
+- `scripts/openrails-v1-1-showcase.manifest.json` — Public testnet package, flow, receipt, and transaction proof metadata. No private keys or secrets.
+
+## What V1.2 adds
+
+### Move (implemented, NOT yet published)
+
+- `move/sources/nonce_account.move` — Per-payer replay guard. `NonceAccount { payer, lanes: Table<nonce_channel u64, next_nonce_value u64> }`. Functions: `create_nonce_account` / `verify_and_consume` (atomically checks + increments, aborts entire tx on stale value — replay-safe) / `next_nonce` (read-only, used by `NonceEngine`). Wired into both RailsFlow and RailsCard open paths.
+- `move/sources/paycard_v1.move` — Added `metadata_hash: vector<u8>` field; `mint_and_fund_envelope` now takes `nonce_account: &mut NonceAccount`, `nonce_channel: u64`, `metadata_hash: vector<u8>`; `PROTOCOL_VERSION = 12`.
+- `move/sources/sealed_vault.move` — Added `nonce_channel` and `metadata_hash` fields; `build_vault_message` extended to include both; `create_sealed_vault` takes `&mut NonceAccount`.
+- `move/sources/events.move` — Added `ChannelMetadataAnchored` event (emitted at mint with `paycard_id` + `metadata_hash`).
+
+### SDK
+
+- `sdk/src/nonce.ts` — `createNonceEngine({ client, packageId, payer, nonceAccountId })` → `{ peek, next, reset }`. Uses `devInspect` on `next_nonce` + BCS decode. Local reservation for bursts; stale-value auto-retry in `useChannelWrite`.
+- `sdk/src/product-receipt.ts` — `computeMetadataHash` / `metadataHashHex` / `verifyMetadataHash`; `createPaymentReceipt` / `createSettlementReceipt` / `createResidualRecoveryReceipt`; `ProductReceiptV1` schema; deterministic `receiptId`.
+- `sdk/src/access-credential.ts` — Payer-signed `AccessCredentialV1`; `issueAccessCredential` / `verifyAccessCredential` (sig → payer-address match → expiry → channel active); encode/parse/header helpers; `channelResolverFromClient` / `channelResolverFromApi`.
+- `sdk/src/channel-state.ts` — `getChannelState` reads live `Paycard` object → `{ status, active, poolBalance, … }`.
+- `sdk/src/vault.ts` — `VaultParams` gained `nonceChannel`, `metadataHash`; `buildVaultMessage` extended.
+- `sdk/src/ptb.ts` — `buildMintPTB` + `buildCreateVaultPTB` updated with nonce/metadata args; added `buildCreateNonceAccountPTB`.
+- `sdk/src/cli.ts` — Added write commands: `nonce-create`, `open`, `open-vault`, `unseal`, `claim`, `cancel`, `resolve`, `credential issue`, `credential verify`.
+
+### Receipt API Worker — new routes
+
+- `GET /v1/nonces/:nonceAccountId/:lane` — Calls `next_nonce` on-chain via `devInspect`. Returns `{ nonceAccountId, lane, nextNonce }`.
+- `POST /v1/access/verify` — Verifies `AccessCredentialV1` (signature → payer-address match → expiry → channel active). Body: `{ credential: "<token>" }`. Response: `{ granted, reason, paycardId?, service? }`.
+
+### Web app — Console design
+
+The frontend was completely rebuilt as a dense operator console. The old Stream/landing design and all V1.1 marketing components were removed.
+
+Design system:
+- `apps/web/src/console.css` — Single authoritative stylesheet. CSS vars, grid background, `.app`/`.side`/`.appbar`/`.nav`/`.nitem`, `table.dt` (dense mono table), `.jsonbox`, `.pline`/`.acc`/`.stream-card`/`.form`/`.status-line`, connect menu, responsive.
+- Typography: IBM Plex Sans (body) + Geist Mono (mono), loaded via Google Fonts CDN in `index.html`.
+- Palette: dark grid, oklch accent colors.
+
+Architecture:
+- Boots straight to `<ConsoleShell />` — no landing page, no marketing copy.
+- Keyboard nav: `1/2/3` switch panels, `⌘K` focuses search, `Esc` dismisses.
+- Panels: Overview, Write, Rails, Receipts, Proof, Nonces, Credentials.
+
+Wallet integration:
+- `@mysten/dapp-kit` 0.20.0 — standard Sui wallet connect (any Sui-compatible wallet).
+- `@mysten/enoki` 0.11.0 — Google / Facebook / Twitch zkLogin with sponsored gas.
+- Both pin `@mysten/sui` v1.x; Vite `resolve.dedupe` collapses multiple copies.
+- `ConnectMenu.tsx` — zkLogin provider buttons + standard wallet selector; shows address, balance, disconnect when connected.
+
+Write capability:
+- `useChannelWrite.ts` — 13-state write machine. States: `idle`, `disconnected`, `wrong-network`, `insufficient-balance`, `pending-signature`, `submitted`, `finalizing`, `confirmed`, `stale-nonce`, `rejected`, `failed`. Auto-creates `NonceAccount` on first open (cached in `localStorage` per address+network+package). Stale-nonce retry built in.
+- Operations: `open` (RailsFlow mint), `claim`, `cancel`, `resolve`.
+- RailsCard in-browser (`openVault`) is pending — currently CLI-only.
 
 ## Cloudflare and hosting operations
 
-This section is for the next agent taking over deployment, operations, or incident response. It records repo-known facts only. Unknown Cloudflare account, dashboard, project, custom domain, and secret values must be filled in after operator verification.
+This section records repo-known facts only. Unknown Cloudflare account, dashboard, project, custom domain, and secret values must be filled in after operator verification.
 
 ### Source-of-truth matrix
 
@@ -116,11 +132,11 @@ This section is for the next agent taking over deployment, operations, or incide
 | --- | --- | --- |
 | Receipt API Worker | `services/receipt-api/wrangler.toml` | Worker name `openrails-receipt-api`, entrypoint `src/handler.ts`, compatibility date `2026-06-18`. |
 | Receipt API public base | `sdk/src/cli.ts`, `apps/web/src/services/openrailsApi.ts` | Default URL `https://openrails-receipt-api.microcosm.workers.dev`. |
-| Receipt API package ID | `services/receipt-api/wrangler.toml`, web API client, showcase manifest | V1.1 package `0x7cb4ca17166b7999223d665db2e43991288b1fd8466b930e4c2a345e847aaf55`. |
-| Move generated publish metadata | `move/Published.toml` | Older generated testnet package `0xfaf26d6a2028446fa61f4171c27f26209dc7951ea8634dc8ce88e1fa125dacf1`. Do not treat this as the V1.1 public cut without reconciling. |
+| Receipt API package ID | `services/receipt-api/wrangler.toml`, web API client, showcase manifest | V1.2 package `0x4a42fd8493d0929879b2cbd4e19226468867f2c4a4dece8a59d317911d172b2c` (published 2026-06-21). V1.1 historical: `0x7cb4ca17…`. |
+| Move generated publish metadata | `move/Published.toml` | V1.2 package (published 2026-06-21). V1.1 cut was at `0x7cb4ca17…`; pre-V1.1 legacy at `0xfaf26d6a…`. |
 | Resolver Worker | `services/resolver/wrangler.toml` | Worker name `openrails-resolver`, entrypoint `src/handler.ts`, compatibility date `2024-01-01`. |
-| Web app | `apps/web/package.json`, `apps/web/src/services/openrailsApi.ts` | Vite React app under `apps/web`, read-only, default API points to receipt Worker. |
-| SDK CLI | `sdk/package.json`, `sdk/src/cli.ts` | `openrails` bin, read-only receipt/stream/proof/health commands. |
+| Web app | `apps/web/package.json` | Vite React console app, `console-app` branch. Write-capable when package ID + Enoki secrets are set. |
+| SDK CLI | `sdk/package.json`, `sdk/src/cli.ts` | `openrails` bin, V1.2 adds write commands. |
 
 ### Receipt API Worker
 
@@ -138,7 +154,7 @@ Operational facts:
 | Public default URL | `https://openrails-receipt-api.microcosm.workers.dev` |
 | Sui network | `testnet` |
 | Sui RPC | `https://fullnode.testnet.sui.io:443` |
-| OpenRails package | `0x7cb4ca17166b7999223d665db2e43991288b1fd8466b930e4c2a345e847aaf55` |
+| OpenRails package | `0x4a42fd8493d0929879b2cbd4e19226468867f2c4a4dece8a59d317911d172b2c` (V1.2, published 2026-06-21) |
 | Cron | every five minutes, `*/5 * * * *` |
 
 Required Cloudflare secrets, names only:
@@ -164,14 +180,16 @@ Receipt API route table:
 
 | Method | Route | Auth | Storage | Behavior |
 | --- | --- | --- | --- | --- |
-| `GET` | `/health` | none | none | Returns `{ "ok": true }`; does not require package config. |
-| `GET` | `/v1/receipts` | none | optional | Lists indexed settlement receipts from D1 when configured, otherwise falls back to live Sui event queries. Query params: `limit`, `order`, `cursorTxDigest`, `cursorEventSeq`, `paycardId`, `payer`, `recipient`, `settlementType`. |
-| `GET` | `/v1/receipts/:paycardId` | none | optional | Returns terminal receipt for a paycard or `receipt_not_found`. Query params: `limit`, `maxPages`. |
+| `GET` | `/health` | none | none | Returns `{ "ok": true }`. |
+| `GET` | `/v1/receipts` | none | optional | Lists indexed settlement receipts from D1, falls back to live Sui event queries. Query params: `limit`, `order`, `cursorTxDigest`, `cursorEventSeq`, `paycardId`, `payer`, `recipient`, `settlementType`. |
+| `GET` | `/v1/receipts/:paycardId` | none | optional | Returns terminal receipt for a paycard or `receipt_not_found`. |
 | `GET` | `/v1/streams/:paycardId` | none | required | Returns latest signed gateway projection state or `stream_not_found`. |
 | `GET` | `/v1/streams/:paycardId/events` | none | required | Lists signed gateway events. Query params: `limit`, `cursor`. |
 | `GET` | `/v1/proofs/:paycardId` | none | optional | Joins latest stream state, recent gateway events, terminal receipt, explorer links, and trust boundaries. |
-| `POST` | `/v1/gateway/events` | gateway signature | required | Verifies signed gateway event with `GATEWAY_PUBLIC_KEY_HEX`, stores idempotently by `eventId`, updates paycard projection if newer. |
-| `POST` | `/admin/index/receipts/run` | `ADMIN_TOKEN` | required | Runs receipt indexer manually. Token accepted through `Authorization` bearer form or `X-Admin-Token`. |
+| `GET` | `/v1/nonces/:nonceAccountId/:lane` | none | none | Calls `next_nonce` on-chain via `devInspect`. Returns `{ nonceAccountId, lane, nextNonce }`. V1.2. |
+| `POST` | `/v1/access/verify` | none | none | Verifies `AccessCredentialV1`. Body: `{ credential }`. Response: `{ granted, reason, paycardId?, service? }`. V1.2. |
+| `POST` | `/v1/gateway/events` | gateway signature | required | Verifies signed gateway event with `GATEWAY_PUBLIC_KEY_HEX`, stores idempotently. |
+| `POST` | `/admin/index/receipts/run` | `ADMIN_TOKEN` | required | Runs receipt indexer manually. |
 
 Important route behaviors:
 
@@ -198,8 +216,7 @@ Receipt indexer facts:
 - Implementation: `services/receipt-api/src/indexer.ts`.
 - Indexer name: `settlement_receipts_v1`.
 - Event queried: `${packageId}::events::SettlementReceipt`.
-- Order: ascending.
-- Page limit: `50`.
+- Order: ascending. Page limit: `50`.
 - Cursor fields: transaction digest and event sequence.
 - Cursor advances only after storage writes succeed.
 - Scheduled Worker event runs the indexer every five minutes.
@@ -230,13 +247,8 @@ Runtime behavior:
 
 - Reads active paycards from `scripts/openrails-v1-1-showcase.manifest.json` by default.
 - Uses an Ed25519 Sui private key to sign gateway events. Never print or save this key.
-- Starts SDK `startGateway`.
-- Posts signed events to `GATEWAY_WEBHOOK_URL`, normally the Worker route `/v1/gateway/events`.
 - Prints gateway public key hex, which must match Worker secret `GATEWAY_PUBLIC_KEY_HEX`.
-- Persists gateway state to `scripts/openrails-v1-1-gateway-state.json` by default.
-- Default polling interval is `10_000` milliseconds.
-
-Do not commit generated gateway state unless an operator explicitly decides it is public and useful. Treat it as operational state.
+- Persists gateway state to `scripts/openrails-v1-1-gateway-state.json` by default. Do not commit.
 
 ### Resolver Worker
 
@@ -259,38 +271,73 @@ Operational facts:
 Resolver behavior:
 
 - Fetches Walrus blob content from the selected public aggregator.
-- Accepts plain OpenRails envelopes with `envelope` and `intent` objects.
-- Accepts encrypted OpenRails envelopes with AES-256-GCM fragment-key schema.
+- Accepts plain or AES-256-GCM encrypted OpenRails envelopes.
 - Returns JSON with permissive CORS if content validates.
-- Returns `404` for missing/expired blobs, `422` for invalid JSON, and `400` for non-OpenRails content.
+- Returns `404` for missing/expired blobs, `422` for invalid JSON, `400` for non-OpenRails content.
 
-### Web hosting state
+### Web server (apps/web)
 
-Repo-known facts:
+Operational facts:
 
 | Item | Value |
 | --- | --- |
-| App directory | `apps/web` |
-| Framework | Vite + React |
+| Framework | Vite 6.0.0 + React 19 + TypeScript 5.7 |
+| Branch | `console-app` |
+| Dev server | `npm --prefix apps/web run dev` → `http://localhost:5173` |
 | Typecheck | `npm --prefix apps/web run typecheck` |
-| Build | `npm --prefix apps/web run build` |
-| Output directory | `apps/web/dist` |
-| Default API base | `https://openrails-receipt-api.microcosm.workers.dev` |
-| API override | `VITE_OPENRAILS_API_BASE_URL` |
-| Product mode | read-only proof/dashboard surface |
+| Production build | `npm --prefix apps/web run build` → `apps/web/dist` |
+| Preview built output | `npm --prefix apps/web run preview` |
+| Local SDK link | `@openrails/sdk` → `file:../../sdk` (build SDK first; reinstall after each SDK change) |
+| API default | `https://openrails-receipt-api.microcosm.workers.dev` |
 
-Unknown from repo, fill after deploy:
+Environment variables (all `VITE_` prefixed, read via `import.meta.env`):
+
+| Variable | Required | Default | Notes |
+| --- | --- | --- | --- |
+| `VITE_SUI_NETWORK` | no | `testnet` | `testnet` or `mainnet`. Controls initial network for SuiClientProvider. |
+| `VITE_OPENRAILS_PACKAGE_ID` | for writes | `0x4a42fd84…` (V1.2) | Published 2026-06-21. Set in `apps/web/.env.local` and Cloudflare Pages env. |
+| `VITE_OPENRAILS_API_BASE_URL` | no | Worker default URL | Override to point at a local Worker dev server. |
+| `VITE_ENOKI_API_KEY` | for zkLogin | — | Enoki project public API key. Never commit. |
+| `VITE_GOOGLE_CLIENT_ID` | for Google zkLogin | — | OAuth 2.0 client ID. Never commit. |
+| `VITE_ENOKI_FACEBOOK_CLIENT_ID` | for FB zkLogin | — | Never commit. |
+| `VITE_ENOKI_TWITCH_CLIENT_ID` | for Twitch zkLogin | — | Never commit. |
+
+Wallet setup notes:
+
+- `ENOKI_ENABLED` is computed at runtime as `true` when `VITE_ENOKI_API_KEY` + at least one OAuth client ID is present. If absent, zkLogin options are hidden; standard Sui wallet connect still works.
+- `ENOKI_REDIRECT_URL` is `window.location.origin` — no extra config needed.
+- For Google zkLogin: in Google Cloud Console, create an OAuth 2.0 client (Web application), add `http://localhost:5173` (and the production origin) to Authorized JavaScript Origins. No server-side redirect needed.
+- For Enoki sponsorship: allowlist the move-call targets in the Enoki developer portal: `mint_and_fund_envelope`, `claim_settlement_round`, `cancel_paycard`, `resolve_residual_delta_expiry`, `create_nonce_account`.
+- Full operator setup guide: `apps/web/WALLET_E2E.md`.
+
+Local dev quick start:
+
+```bash
+cp apps/web/.env.example apps/web/.env.local   # fill in secrets
+npm --prefix sdk run build
+npm --prefix apps/web install
+npm --prefix apps/web run dev                   # → http://localhost:5173
+```
+
+After any SDK source change:
+
+```bash
+npm --prefix sdk run build
+rm -rf apps/web/node_modules/@openrails/sdk
+npm --prefix apps/web install
+```
+
+Web hosting (Cloudflare Pages) — unknown from repo:
 
 ```text
 Cloudflare Pages project name: <unknown>
 Production web URL: <unknown>
 Preview URL pattern: <unknown>
 Custom domain: <unknown>
-Build environment variables: <unknown except VITE_OPENRAILS_API_BASE_URL if set>
-Cache/header policy: <unknown>
+Build command: npm run build
+Build output directory: dist
+Build environment variables: VITE_OPENRAILS_PACKAGE_ID, VITE_ENOKI_API_KEY, etc.
 ```
-
-The current web app does not connect wallets, request signatures, or submit transactions. It consumes the Worker API and displays proof, receipt, stream, and gateway projection state.
 
 ### Post-deploy smoke checks
 
@@ -308,12 +355,12 @@ npm --prefix apps/web run build
 
 If web hosting is deployed, also verify:
 
-- landing page loads,
-- dashboard route loads,
-- proof center returns data,
+- console app loads (no landing page — boots directly to ConsoleShell),
+- Overview, Rails, Receipts, Proof panels load data,
+- proof center returns testnet evidence links,
 - explorer links point to Sui testnet,
-- API base URL is the intended Worker URL,
-- no wallet/write affordance implies production write support.
+- network chip shows correct network,
+- Connect button opens wallet / zkLogin options.
 
 ### Rollback notes
 
@@ -321,11 +368,11 @@ If web hosting is deployed, also verify:
 - D1 rollback: preserve data when possible; schema is additive in V1.1. Do not drop tables without explicit approval.
 - Gateway rollback: stop gateway operator or point it to a safe webhook. Do not rotate keys without updating Worker `GATEWAY_PUBLIC_KEY_HEX`.
 - Web rollback: redeploy previous static build or revert web commit group.
-- Protocol rollback after package publish is limited because Sui package IDs and emitted events are immutable.
+- Protocol rollback after package publish is limited — Sui package IDs and emitted events are immutable.
 
 ## Last validation run
 
-The following passed during release hardening:
+The following passed during V1.2 implementation:
 
 ```bash
 sui move test --path move
@@ -348,34 +395,31 @@ Move tests passed with deprecated `vector::empty` warnings only.
 
 ## Known gaps
 
-1. Nonce Lane architecture: **on-chain layer implemented (V1.2), off-chain pending.**
-   - DONE (branch `v1-2-nonce-lanes`, `sui move test` green, NOT published): `move/sources/nonce_account.move` — per-payer `NonceAccount { payer, lanes: Table<nonce_channel, next_nonce_value> }` with `create_nonce_account` / `verify_and_consume` / `next_nonce`. Lane consumption wired into `mint_and_fund_envelope` (RailsFlow) and `create_sealed_vault` (RailsCard); `payer = sender`, atomic (replay/stale value aborts the whole tx). `metadata_hash` bound into `Paycard`/`SealedVault` + the vault signature message + `ChannelMetadataAnchored` event. `PROTOCOL_VERSION = 12`.
-   - PENDING (Phase 2): SDK `NonceEngine`, SDK `buildVaultMessage` + entry-param updates to the new ABI, then publish the V1.2 package and repoint receipt-api / web / sdk package IDs.
-2. Public writes: **CLI + web implemented (V1.2), live e2e pending publish.**
-   - CLI: `openrails nonce-create/open/open-vault/unseal/claim/cancel/resolve` (branch `v1-2-nonce-lanes`).
-   - Web (consolidated on `console-app`): @mysten/dapp-kit + @mysten/enoki (Google/Facebook/Twitch zkLogin + sponsored gas), `useChannelWrite` write-state machine, "Open a rail" surface (open/claim/cancel/resolve). Pins: dapp-kit 0.20.0 + enoki 0.11.0 (sui v1.x, matching the SDK); Vite `dedupe` collapses @mysten/sui copies.
-   - PENDING (operator): publish V1.2, set `VITE_OPENRAILS_PACKAGE_ID` + Enoki/Google secrets (`apps/web/.env.local` from `.env.example`), run the live e2e per `apps/web/WALLET_E2E.md`. RailsCard vault open/unseal is CLI-only in the web for now.
-3. Access credentials: **implemented (V1.2).**
-   - SDK `access-credential.ts` — payer-signed `AccessCredentialV1` (merchant co-sign optional), `Authorization: OpenRails` header helpers, `verifyAccessCredentialSignature` + `verifyAccessCredential` (sig → payer-address match → expiry → channel active via `channel-state.ts` `getChannelState` or the proof API). Worker `POST /v1/access/verify`; CLI `credential issue`/`verify`. sdk 25/25, worker 25/25.
-   - PENDING: on-chain `metadataHash` cross-check (needs `ChannelMetadataAnchored` indexing), credential revocation, browser credential issuing (personal-message signing), a demo gated-resource/middleware example.
-4. The formal product Receipt Layer: **SDK layer implemented (V1.2).**
-   - DONE: canonical `metadata_hash` bound on-chain at mint; SDK `product-receipt.ts` (`computeMetadataHash`/`metadataHashHex`/`verifyMetadataHash` + `createPaymentReceipt`/`createSettlementReceipt`/`createResidualRecoveryReceipt`, `ProductReceiptV1` schema, deterministic `receiptId`); Worker `GET /v1/nonces/:nonceAccountId/:lane`.
-   - PENDING: PDF/QR/merchant export, a Worker `/v1/product-receipts/:paycardId` route (needs off-chain metadata sourcing), `ChannelMetadataAnchored` indexing to expose `metadata_hash` in proofs, the by-`:payer` nonce form (needs a `NonceAccountCreated` Move event), and access-credential binding to product receipt id + metadata hash.
-   - Existing receipts still primarily mean terminal onchain `SettlementReceipt` records.
-5. V2 Vault, Conduit, and DOF architecture: **design locked** (`docs/architecture/v2-blueprint.md` — DOF = Sui Dynamic Object Fields, object model + ABI sketch + migration). Not yet built.
-6. `uiland/**` remains untracked and intentionally excluded.
+1. **V1.2 Move package: published.** Package `0x4a42fd8493d0929879b2cbd4e19226468867f2c4a4dece8a59d317911d172b2c` is live on testnet. `wrangler.toml` and `config.ts` updated. **Pending: redeploy Worker** (`npm --prefix services/receipt-api run deploy`) to start indexing V1.2 receipts. Requires `wrangler login` first.
+2. **Live e2e writes: ready once Worker is redeployed.** `useChannelWrite` is fully wired to V1.2 package. Open the local dev server and connect a Sui wallet to open channels now.
+3. **Console tailoring plan (Parts A–E): pending.** Plan saved at `/home/jay/.claude/plans/the-frontend-is-the-typed-narwhal.md`:
+   - A: Human units — SUI/sec instead of MIST/sec, stablecoin asset selector (DBUSDC testnet / USDC mainnet).
+   - B: Automatic network switching — wallet chain auto-syncs the app network; sidebar network switcher.
+   - C: RailsCard (sealed vault) open in the browser via ephemeral keypair + bearer link.
+   - D: Shareable link + QR per paycard type (`qrcode.react`).
+   - E: Animated stream meter — ticking accrual value, flowing progress bar, countdown.
+4. **Access credential: browser issuing pending.** CLI `credential issue` works. Browser path (personal-message signing via wallet) is on roadmap. `ChannelMetadataAnchored` indexing (for `metadataHash` cross-check in credential verify) also pending.
+5. **Product receipt: export layer pending.** SDK layer done (`product-receipt.ts`). Worker `/v1/product-receipts/:paycardId` route, PDF/QR merchant export, and `ChannelMetadataAnchored` event indexing pending.
+6. **V2 Vault/Conduit/DOF: design locked, not built.** See `docs/architecture/v2-blueprint.md`.
+7. **`uiland/**` remains untracked and intentionally excluded.**
 
 ## Immediate next options
 
-1. Push and deploy V1.1 read/proof cut.
-2. Implement V1.2 nonce lanes and public write foundations.
-3. Add the V1.2 Receipt Layer, including canonical metadata hash, product receipt schema, and access credential binding.
-4. Produce V2 Vault/Conduit/DOF design before more code.
+1. Publish V1.2 package (operator) + update package IDs across Worker and web.
+2. Run live e2e from the browser (`apps/web/WALLET_E2E.md`) after publish.
+3. Implement Console tailoring plan Parts A–E (human units, network switch, RailsCard, QR, meter).
+4. Index `ChannelMetadataAnchored` event in Worker + product receipt route.
+5. Start V2 Vault/Conduit/DOF build.
 
 Recommended sequence:
 
 ```text
-Push and deploy V1.1 -> implement V1.2 nonce/write/receipt foundations -> start V2
+publish V1.2 → live e2e smoke → tailoring plan A-B → C-E → product receipt → V2
 ```
 
 ## Handoff update protocol
@@ -416,6 +460,7 @@ node_modules/**
 dist/**
 move/build/**
 *:Zone.Identifier
+scripts/openrails-v1-1-gateway-state.json
 ```
 
 Current `.gitignore` includes `*:Zone.Identifier` to prevent accidental Windows metadata commits.
