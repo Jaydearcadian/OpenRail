@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { Ed25519Keypair } from '@mysten/sui/keypairs/ed25519';
-import { buildHeartbeat, parseSettlementReceiptEvent } from '@openrails/sdk';
+import { buildHeartbeat, parseSettlementReceiptEvent, issueAccessCredential, buildAuthorizationHeader } from '@openrails/sdk';
 import worker, { handleRequest } from '../dist/handler.js';
 import { createInMemoryReceiptStorage } from '../dist/storage.js';
 
@@ -503,6 +503,91 @@ test('GET /v1/nonces rejects a non-hex account id', async () => {
     env,
     undefined,
     inspectStub(5)
+  );
+  assert.equal(response.status, 400);
+});
+
+function activeChannelObjectStub(payer) {
+  return {
+    async getObject() {
+      return {
+        data: {
+          content: {
+            dataType: 'moveObject',
+            fields: {
+              status: 0,
+              allocation_pool: '1000',
+              start_timestamp: '0',
+              duration_seconds: '999999999999',
+              payer,
+              recipient: RECIPIENT,
+            },
+          },
+        },
+      };
+    },
+  };
+}
+
+async function issuedCredential(kp, overrides = {}) {
+  const claims = {
+    schemaVersion: '1.0',
+    paycardId: PAYCARD_ID,
+    payer: kp.toSuiAddress(),
+    service: 'api.example',
+    metadataHash: '0xab',
+    issuedAt: new Date().toISOString(),
+    expiresAt: new Date(Date.now() + 3_600_000).toISOString(),
+    nonce: 1,
+    ...overrides,
+  };
+  return issueAccessCredential(claims, kp);
+}
+
+test('POST /v1/access/verify grants on an active channel', async () => {
+  const kp = new Ed25519Keypair();
+  const cred = await issuedCredential(kp);
+  const response = await handleRequest(
+    new Request('https://api.openrails.test/v1/access/verify', {
+      method: 'POST',
+      headers: { Authorization: buildAuthorizationHeader(cred) },
+    }),
+    env,
+    undefined,
+    undefined,
+    activeChannelObjectStub(kp.toSuiAddress())
+  );
+  const body = await json(response);
+  assert.equal(response.status, 200);
+  assert.equal(body.granted, true);
+  assert.equal(body.reason, 'ok');
+  assert.equal(body.service, 'api.example');
+});
+
+test('POST /v1/access/verify denies a tampered credential', async () => {
+  const kp = new Ed25519Keypair();
+  const cred = await issuedCredential(kp);
+  cred.claims.service = 'evil.example';
+  const response = await handleRequest(
+    new Request('https://api.openrails.test/v1/access/verify', {
+      method: 'POST',
+      headers: { Authorization: buildAuthorizationHeader(cred) },
+    }),
+    env,
+    undefined,
+    undefined,
+    activeChannelObjectStub(kp.toSuiAddress())
+  );
+  const body = await json(response);
+  assert.equal(response.status, 200);
+  assert.equal(body.granted, false);
+  assert.equal(body.reason, 'bad_signature');
+});
+
+test('POST /v1/access/verify with no credential returns 400', async () => {
+  const response = await handleRequest(
+    new Request('https://api.openrails.test/v1/access/verify', { method: 'POST' }),
+    env
   );
   assert.equal(response.status, 400);
 });

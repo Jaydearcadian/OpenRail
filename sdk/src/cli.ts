@@ -16,10 +16,29 @@ import {
 } from "./ptb.js";
 import { signVaultEd25519, CURVE_ED25519 } from "./vault.js";
 import { bytesToHex } from "./signer.js";
+import {
+  issueAccessCredential,
+  encodeAccessCredential,
+  buildAuthorizationHeader,
+  parseAccessCredential,
+  verifyAccessCredential,
+  channelResolverFromClient,
+  ACCESS_CREDENTIAL_SCHEMA_VERSION,
+  type AccessCredentialClaimsV1,
+} from "./access-credential.js";
 
 export const DEFAULT_OPENRAILS_API_BASE_URL = "https://openrails-receipt-api.microcosm.workers.dev";
 
-const WRITE_COMMANDS = new Set(["nonce-create", "open", "open-vault", "unseal", "claim", "cancel", "resolve"]);
+const WRITE_COMMANDS = new Set([
+  "nonce-create",
+  "open",
+  "open-vault",
+  "unseal",
+  "claim",
+  "cancel",
+  "resolve",
+  "credential",
+]);
 const DEFAULT_COIN_TYPE = "0x2::sui::SUI";
 
 export interface OpenRailsCliIo {
@@ -60,6 +79,8 @@ Write commands (V1.2; signs and submits transactions):
   openrails claim <paycardId> [--type COIN] [--network ...] [--package ID]
   openrails cancel <paycardId> [--type COIN] [--network ...] [--package ID]
   openrails resolve <paycardId> [--type COIN] [--network ...] [--package ID]
+  openrails credential issue --paycard ID --service NAME --metadata-hash HEX --expires-in SECS [--recipient ADDR] [--product-receipt-id ID]   (signs with OPENRAILS_PRIVATE_KEY)
+  openrails credential verify <token> [--network ...] [--rpc URL] [--package ID]   (no key needed)
 
 Options:
   --base-url URL             OpenRails Receipt API base URL. Overrides OPENRAILS_API_BASE_URL.
@@ -393,8 +414,72 @@ function settlementReceiptEmitted(res: { events?: Array<{ type?: string }> | nul
   return (res.events ?? []).some((e) => typeof e.type === "string" && e.type.endsWith("::events::SettlementReceipt"));
 }
 
+function resolveNetworkPackage(options: Map<string, string>, env: Record<string, string | undefined>) {
+  const network = options.get("--network") ?? "testnet";
+  if (network !== "testnet" && network !== "mainnet") throw new UsageError("--network must be testnet or mainnet.");
+  const rpc = options.get("--rpc") ?? NETWORKS[network].rpc;
+  const packageId = options.get("--package") ?? env.OPENRAILS_PACKAGE_ID;
+  if (!packageId) throw new UsageError("--package <id> or OPENRAILS_PACKAGE_ID is required.");
+  return { rpc, packageId };
+}
+
 async function runWriteCommand(commandArgs: string[], env: Record<string, string | undefined>): Promise<unknown> {
   const [scope, ...rest] = commandArgs;
+
+  if (scope === "credential") {
+    const [action, ...credRest] = rest;
+
+    if (action === "issue") {
+      const parsed = parseCommandArgs(
+        credRest,
+        new Set([...COMMON_WRITE_OPTIONS, "--paycard", "--service", "--metadata-hash", "--expires-in", "--recipient", "--product-receipt-id"]),
+      );
+      requireNoPositionals(parsed.positionals, "credential issue");
+      const ctx = loadWriteContext(parsed.options, env); // needs OPENRAILS_PRIVATE_KEY
+      const paycardId = requireAddress(parsed.options.get("--paycard"), "--paycard");
+      const service = requireValue(parsed.options.get("--service"), "--service");
+      const metadataHash = requireValue(parsed.options.get("--metadata-hash"), "--metadata-hash");
+      const expiresIn = Number(parseBigintArg(parsed.options.get("--expires-in"), "--expires-in"));
+      const recipient = parsed.options.get("--recipient");
+      const productReceiptId = parsed.options.get("--product-receipt-id");
+
+      const claims: AccessCredentialClaimsV1 = {
+        schemaVersion: ACCESS_CREDENTIAL_SCHEMA_VERSION,
+        paycardId,
+        payer: ctx.sender,
+        ...(recipient ? { recipient } : {}),
+        service,
+        ...(productReceiptId ? { productReceiptId } : {}),
+        metadataHash,
+        issuedAt: new Date().toISOString(),
+        expiresAt: new Date(Date.now() + expiresIn * 1000).toISOString(),
+        nonce: Date.now(),
+      };
+      const credential = await issueAccessCredential(claims, ctx.keypair);
+      return {
+        command: "credential issue",
+        payer: ctx.sender,
+        expiresAt: claims.expiresAt,
+        token: encodeAccessCredential(credential),
+        authorization: buildAuthorizationHeader(credential),
+      };
+    }
+
+    if (action === "verify") {
+      const parsed = parseCommandArgs(credRest, new Set(["--network", "--rpc", "--package"]));
+      const token = requireOnePositional(parsed.positionals, "credential verify", "token");
+      const { rpc } = resolveNetworkPackage(parsed.options, env);
+      const credential = parseAccessCredential(token);
+      const client = new SuiClient({ url: rpc });
+      const decision = await verifyAccessCredential({
+        credential,
+        resolveChannel: channelResolverFromClient(client),
+      });
+      return { command: "credential verify", ...decision, service: credential.claims.service, expiresAt: credential.claims.expiresAt };
+    }
+
+    throw new UsageError("credential requires a subcommand: issue | verify.");
+  }
 
   if (scope === "nonce-create") {
     const parsed = parseCommandArgs(rest, new Set(COMMON_WRITE_OPTIONS));

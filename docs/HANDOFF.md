@@ -354,9 +354,9 @@ Move tests passed with deprecated `vector::empty` warnings only.
 2. Public writes are not exposed in the web app or CLI.
    - Protocol and SDK write paths exist (SDK PTB builders not yet updated to the V1.2 nonce/metadata ABI).
    - Public product surface remains read/proof-first.
-3. Access credentials are not yet a product primitive.
-   - No finalized `Authorization: OpenRails <credential>` flow.
-   - Gateway and admin auth exist for operator paths, not end-user service access.
+3. Access credentials: **implemented (V1.2, branch `v1-2-access-credentials`).**
+   - SDK `access-credential.ts` — payer-signed `AccessCredentialV1` (merchant co-sign optional), `Authorization: OpenRails` header helpers, `verifyAccessCredentialSignature` + `verifyAccessCredential` (sig → payer-address match → expiry → channel active via `channel-state.ts` `getChannelState` or the proof API). Worker `POST /v1/access/verify`; CLI `credential issue`/`verify`. sdk 25/25, worker 25/25.
+   - PENDING: on-chain `metadataHash` cross-check (needs `ChannelMetadataAnchored` indexing), credential revocation, a demo gated-resource/middleware example.
 4. The formal product Receipt Layer: **SDK layer implemented (V1.2).**
    - DONE: canonical `metadata_hash` bound on-chain at mint; SDK `product-receipt.ts` (`computeMetadataHash`/`metadataHashHex`/`verifyMetadataHash` + `createPaymentReceipt`/`createSettlementReceipt`/`createResidualRecoveryReceipt`, `ProductReceiptV1` schema, deterministic `receiptId`); Worker `GET /v1/nonces/:nonceAccountId/:lane`.
    - PENDING: PDF/QR/merchant export, a Worker `/v1/product-receipts/:paycardId` route (needs off-chain metadata sourcing), `ChannelMetadataAnchored` indexing to expose `metadata_hash` in proofs, the by-`:payer` nonce form (needs a `NonceAccountCreated` Move event), and access-credential binding to product receipt id + metadata hash.

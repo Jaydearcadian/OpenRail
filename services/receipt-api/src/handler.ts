@@ -17,6 +17,13 @@ import {
   gatewayEventMetadata,
   type OpenRailsProofStreamState,
 } from "@openrails/sdk/worker";
+import {
+  parseAuthorizationHeader,
+  parseAccessCredential,
+  verifyAccessCredential,
+  channelResolverFromClient,
+  type AccessCredentialV1,
+} from "@openrails/sdk/worker";
 import { SuiClient } from "@mysten/sui/client";
 import { Transaction } from "@mysten/sui/transactions";
 import { bcs } from "@mysten/sui/bcs";
@@ -160,6 +167,52 @@ function createInspectClient(config: ReceiptApiConfig, override?: InspectClient)
   return override && typeof override.devInspectTransactionBlock === "function"
     ? override
     : new SuiClient({ url: config.rpcUrl });
+}
+
+type ObjectClient = Pick<SuiClient, "getObject">;
+
+function createObjectClient(config: ReceiptApiConfig, override?: ObjectClient): ObjectClient {
+  return override && typeof override.getObject === "function" ? override : new SuiClient({ url: config.rpcUrl });
+}
+
+/**
+ * POST /v1/access/verify — verify an `Authorization: OpenRails <credential>` (or { credential }
+ * body) against the channel's live on-chain state. Hosted convenience so services don't
+ * reimplement verification; the same check is available offline via the SDK.
+ */
+async function handleAccessVerify(
+  request: Request,
+  config: ReceiptApiConfig,
+  objectOverride?: ObjectClient,
+): Promise<Response> {
+  let credential: AccessCredentialV1 | null = parseAuthorizationHeader(request.headers.get("Authorization"));
+  if (!credential) {
+    const body = (await request.json().catch(() => null)) as { credential?: unknown } | null;
+    const raw = body?.credential;
+    if (typeof raw === "string") {
+      try {
+        credential = parseAccessCredential(raw);
+      } catch {
+        credential = null;
+      }
+    } else if (raw && typeof raw === "object") {
+      credential = raw as AccessCredentialV1;
+    }
+  }
+
+  if (!credential) {
+    return errorResponse(400, "invalid_request", "Provide an `Authorization: OpenRails <token>` header or a { credential } body.");
+  }
+
+  const client = createObjectClient(config, objectOverride);
+  const decision = await verifyAccessCredential({ credential, resolveChannel: channelResolverFromClient(client) });
+
+  return jsonResponse({
+    granted: decision.granted,
+    reason: decision.reason,
+    paycardId: decision.paycardId,
+    service: credential.claims.service,
+  });
 }
 
 /**
@@ -513,7 +566,8 @@ export async function handleRequest(
   request: Request,
   env: ReceiptApiEnv = {},
   clientOverride?: ReceiptClient,
-  inspectOverride?: InspectClient
+  inspectOverride?: InspectClient,
+  objectOverride?: ObjectClient
 ): Promise<Response> {
   if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: corsHeaders });
   if (request.method !== "GET" && request.method !== "POST") {
@@ -551,6 +605,10 @@ export async function handleRequest(
 
     if (request.method === "POST" && url.pathname === "/admin/index/receipts/run") {
       return await handleRunReceiptIndexer(request, env, config, clientOverride);
+    }
+
+    if (request.method === "POST" && url.pathname === "/v1/access/verify") {
+      return await handleAccessVerify(request, config, objectOverride);
     }
 
     if (request.method !== "GET") {
