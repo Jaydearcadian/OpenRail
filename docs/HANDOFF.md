@@ -353,11 +353,11 @@ Move tests passed with deprecated `vector::empty` warnings only.
    - PENDING (Phase 2): SDK `NonceEngine`, SDK `buildVaultMessage` + entry-param updates to the new ABI, then publish the V1.2 package and repoint receipt-api / web / sdk package IDs.
 2. Public writes: **CLI + web implemented (V1.2), live e2e pending publish.**
    - CLI: `openrails nonce-create/open/open-vault/unseal/claim/cancel/resolve` (branch `v1-2-nonce-lanes`).
-   - Web (branch `web-wallet-writes`): @mysten/dapp-kit + @mysten/enoki (Google/Facebook/Twitch zkLogin + sponsored gas), `useChannelWrite` 13-state machine, "Open a rail" surface (open/claim/cancel/resolve), ConnectMenu in topbar. Typecheck + build green. Pins: dapp-kit 0.20.0 + enoki 0.11.0 (sui v1.x, matching the SDK); Vite `dedupe` collapses @mysten/sui copies.
+   - Web (consolidated on `console-app`): @mysten/dapp-kit + @mysten/enoki (Google/Facebook/Twitch zkLogin + sponsored gas), `useChannelWrite` write-state machine, "Open a rail" surface (open/claim/cancel/resolve). Pins: dapp-kit 0.20.0 + enoki 0.11.0 (sui v1.x, matching the SDK); Vite `dedupe` collapses @mysten/sui copies.
    - PENDING (operator): publish V1.2, set `VITE_OPENRAILS_PACKAGE_ID` + Enoki/Google secrets (`apps/web/.env.local` from `.env.example`), run the live e2e per `apps/web/WALLET_E2E.md`. RailsCard vault open/unseal is CLI-only in the web for now.
-3. Access credentials are not yet a product primitive.
-   - No finalized `Authorization: OpenRails <credential>` flow.
-   - Gateway and admin auth exist for operator paths, not end-user service access.
+3. Access credentials: **implemented (V1.2).**
+   - SDK `access-credential.ts` — payer-signed `AccessCredentialV1` (merchant co-sign optional), `Authorization: OpenRails` header helpers, `verifyAccessCredentialSignature` + `verifyAccessCredential` (sig → payer-address match → expiry → channel active via `channel-state.ts` `getChannelState` or the proof API). Worker `POST /v1/access/verify`; CLI `credential issue`/`verify`. sdk 25/25, worker 25/25.
+   - PENDING: on-chain `metadataHash` cross-check (needs `ChannelMetadataAnchored` indexing), credential revocation, browser credential issuing (personal-message signing), a demo gated-resource/middleware example.
 4. The formal product Receipt Layer: **SDK layer implemented (V1.2).**
    - DONE: canonical `metadata_hash` bound on-chain at mint; SDK `product-receipt.ts` (`computeMetadataHash`/`metadataHashHex`/`verifyMetadataHash` + `createPaymentReceipt`/`createSettlementReceipt`/`createResidualRecoveryReceipt`, `ProductReceiptV1` schema, deterministic `receiptId`); Worker `GET /v1/nonces/:nonceAccountId/:lane`.
    - PENDING: PDF/QR/merchant export, a Worker `/v1/product-receipts/:paycardId` route (needs off-chain metadata sourcing), `ChannelMetadataAnchored` indexing to expose `metadata_hash` in proofs, the by-`:payer` nonce form (needs a `NonceAccountCreated` Move event), and access-credential binding to product receipt id + metadata hash.

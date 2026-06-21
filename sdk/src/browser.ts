@@ -4,5 +4,7 @@ export * from "./accrual.js";
 export * from "./heartbeat.js";
 export * from "./receipts.js";
 export * from "./product-receipt.js";
+export * from "./channel-state.js";
+export * from "./access-credential.js";
 export * from "./proof.js";
 export * from "./api.js";
