@@ -57,26 +57,40 @@ function sameId(a: string, b: string): boolean {
 }
 
 /**
- * Auto-discover channels the address opened (was the payer/sender of), straight
- * from PaycardMinted events — so the user's own channels appear without any
- * manual import or localStorage. Card-vs-flow can't be known from chain.
+ * Auto-discover the address's channels straight from PaycardMinted events —
+ * both as payer and as recipient — so they appear without manual import or
+ * localStorage. Card-vs-flow can't be known from chain.
+ *
+ * Two queries (the fullnode rejects the {All:[...]} combinator):
+ *  - Sender == address → channels you opened (payer).
+ *  - global PaycardMinted, filtered client-side by recipient == address →
+ *    channels funded *to* you (merchant/recipient side).
  */
 export async function fetchMintedChannels(
   client: SuiClient,
   packageId: string,
   address: string,
-): Promise<Array<{ id: string; role: "payer" }>> {
-  // The fullnode rejects the {All:[...]} combinator, so filter by sender and
-  // match the PaycardMinted event type client-side (the payer is the sender).
-  const res = await client.queryEvents({ query: { Sender: address }, limit: 50, order: "descending" });
+): Promise<Array<{ id: string; role: "payer" | "recipient" }>> {
   const mintType = `${packageId}::events::PaycardMinted`;
-  const out: Array<{ id: string; role: "payer" }> = [];
-  for (const ev of res.data) {
+  const [bySender, byType] = await Promise.all([
+    client.queryEvents({ query: { Sender: address }, limit: 50, order: "descending" }),
+    client.queryEvents({ query: { MoveEventType: mintType }, limit: 50, order: "descending" }),
+  ]);
+  const out = new Map<string, { id: string; role: "payer" | "recipient" }>();
+  for (const ev of bySender.data) {
     if (ev.type !== mintType) continue;
     const p = ev.parsedJson as Record<string, unknown> | undefined;
-    if (p && typeof p.paycard_id === "string") out.push({ id: p.paycard_id, role: "payer" });
+    if (p && typeof p.paycard_id === "string") out.set(p.paycard_id.toLowerCase(), { id: p.paycard_id, role: "payer" });
   }
-  return out;
+  for (const ev of byType.data) {
+    const p = ev.parsedJson as Record<string, unknown> | undefined;
+    if (!p || typeof p.paycard_id !== "string") continue;
+    const key = p.paycard_id.toLowerCase();
+    if (out.has(key)) continue;
+    if (typeof p.payer === "string" && sameId(p.payer, address)) out.set(key, { id: p.paycard_id, role: "payer" });
+    else if (typeof p.recipient === "string" && sameId(p.recipient, address)) out.set(key, { id: p.paycard_id, role: "recipient" });
+  }
+  return [...out.values()];
 }
 
 /** Resolve a created Paycard id from a transaction digest (for import-by-tx). */

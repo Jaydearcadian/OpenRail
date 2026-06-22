@@ -33,10 +33,12 @@ function ChannelCard({ loaded, onChanged }: { loaded: Loaded; onChanged: () => v
   }
 
   const active = view.status === 0;
-  const expired = view.startSec > 0 && Date.now() / 1000 > view.startSec + view.durationSec;
+  // start=0 channels (older mints) have a window that's already elapsed.
+  const expired = Date.now() / 1000 > view.startSec + view.durationSec;
   const me = w.address?.toLowerCase();
-  const isRecipient = me && me === view.recipient.toLowerCase();
-  const isPayer = me && me === view.payer.toLowerCase();
+  const isRecipient = !!me && me === view.recipient.toLowerCase();
+  const isPayer = !!me && me === view.payer.toLowerCase();
+  const myRole = isPayer ? "payer" : isRecipient ? "recipient" : "observer";
   const pct = (() => {
     try {
       const init = Number(BigInt(view.initialAllocation));
@@ -73,7 +75,7 @@ function ChannelCard({ loaded, onChanged }: { loaded: Loaded; onChanged: () => v
         <div><div className="rc-l">flow rate</div><div className="rc-v">{humanRate(view.ratePerSec)}</div></div>
         <div><div className="rc-l">duration</div><div className="rc-v">{humanDuration(view.durationSec)}</div></div>
         <div><div className="rc-l">opened</div><div className="rc-v">{view.startSec ? clockOf(view.startSec) : "at mint"}</div></div>
-        <div><div className="rc-l">role</div><div className="rc-v">{entry.role}</div></div>
+        <div><div className="rc-l">your role</div><div className="rc-v">{myRole}</div></div>
       </div>
 
       {active && expired ? (
@@ -153,6 +155,11 @@ export function ChannelsPanel() {
   }, [client, account]);
 
   useEffect(() => { load(); }, [load]);
+  // Live refresh — cards are keyed by id so their action state survives polls.
+  useEffect(() => {
+    const t = setInterval(load, 15000);
+    return () => clearInterval(t);
+  }, [load]);
 
   const importChannel = async () => {
     const raw = importId.trim();

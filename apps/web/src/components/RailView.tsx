@@ -82,7 +82,7 @@ function CardView({ paycardId }: { paycardId: string }) {
   const isRecipient = w.address && pc && w.address.toLowerCase() === pc.recipient.toLowerCase();
   const isPayer = w.address && pc && w.address.toLowerCase() === pc.payer.toLowerCase();
   const active = pc?.status === 0;
-  const expired = !!pc && pc.startSec > 0 && Date.now() / 1000 > pc.startSec + pc.durationSec;
+  const expired = !!pc && Date.now() / 1000 > pc.startSec + pc.durationSec;
   const busy = ["pending-signature", "submitted", "finalizing"].includes(w.status.kind);
 
   const claim = async () => { recordChannel({ id: paycardId, role: "recipient", kind: "RailsCard" }); await w.claim(paycardId); await load(); };
