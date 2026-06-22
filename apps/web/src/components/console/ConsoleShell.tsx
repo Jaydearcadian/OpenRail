@@ -1,5 +1,7 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useLiveData } from "../../hooks/useLiveData";
+import { useMyStreams } from "../../hooks/useMyStreams";
+import type { LiveDashboardData } from "../../data/showcase";
 import { Sidebar } from "./Sidebar";
 import { Appbar } from "./Appbar";
 import { Overview } from "./Overview";
@@ -46,7 +48,26 @@ export function ConsoleShell() {
     setMobileOpen(false);
   };
 
-  const data = live.status === "ready" ? live.data : null;
+  const baseData = live.status === "ready" ? live.data : null;
+  const mine = useMyStreams();
+
+  // Merge the connected wallet's own channels (read live from chain) into the
+  // Rails/Overview surfaces, ahead of the curated showcase set, deduped by id.
+  const data = useMemo<LiveDashboardData | null>(() => {
+    if (!baseData) {
+      if (mine.streams.length === 0) return null;
+      return {
+        metrics: [], streams: mine.streams, streamDetails: mine.details, receipts: [],
+        activityEvents: [], proofCards: [], proofs: [], statusMatrix: [], gatewayEvents: [], apiBaseUrl: "",
+      };
+    }
+    const seen = new Set(mine.streams.map((s) => s.id.toLowerCase()));
+    return {
+      ...baseData,
+      streams: [...mine.streams, ...baseData.streams.filter((s) => !seen.has(s.id.toLowerCase()))],
+      streamDetails: [...mine.details, ...baseData.streamDetails.filter((d) => !seen.has(d.id.toLowerCase()))],
+    };
+  }, [baseData, mine.streams, mine.details]);
 
   return (
     <div className="app grid-bg">
