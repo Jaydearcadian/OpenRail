@@ -13,7 +13,7 @@ function key(): string {
 export interface MyChannelEntry {
   id: string;
   role: "payer" | "recipient";
-  kind: "RailsCard" | "RailsFlow";
+  kind: "RailsCard" | "RailsFlow" | "Paycard";
   createdAt: number;
 }
 

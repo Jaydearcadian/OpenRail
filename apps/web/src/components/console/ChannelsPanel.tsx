@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useState } from "react";
-import { useSuiClient } from "@mysten/dapp-kit";
+import { useSuiClient, useCurrentAccount } from "@mysten/dapp-kit";
 import { useChannelWrite } from "../../hooks/useChannelWrite";
 import { listChannels, forgetChannel, recordChannel, type MyChannelEntry } from "../../lib/myChannels";
-import { fetchPaycard, fetchReceiptForPaycard, PAYCARD_STATUS, SETTLEMENT_TYPE, type PaycardView, type ReceiptView } from "../../lib/paycard";
+import { fetchPaycard, fetchReceiptForPaycard, fetchMintedChannels, paycardIdFromTx, PAYCARD_STATUS, SETTLEMENT_TYPE, type PaycardView, type ReceiptView } from "../../lib/paycard";
 import { suiGlyph, humanRate, humanDuration, clockOf, shortId } from "../../lib/format";
 import { explorerObjectUrl, explorerTxUrl, OPENRAILS_PACKAGE_ID } from "../../config";
 import { railCardUrl } from "../../lib/raillink";
@@ -111,17 +111,35 @@ function ChannelCard({ loaded, onChanged }: { loaded: Loaded; onChanged: () => v
 
 export function ChannelsPanel() {
   const client = useSuiClient();
+  const account = useCurrentAccount();
   const [items, setItems] = useState<Loaded[] | null>(null);
   const [importId, setImportId] = useState("");
+  const [importErr, setImportErr] = useState<string | null>(null);
 
   const load = useCallback(async () => {
-    const entries = listChannels();
+    // Merge locally-recorded channels with ones auto-discovered from chain for
+    // the connected wallet (PaycardMinted by sender) — so created/funded
+    // channels appear without any manual import.
+    const byId = new Map<string, MyChannelEntry>();
+    for (const e of listChannels()) byId.set(e.id.toLowerCase(), e);
+    if (account) {
+      try {
+        for (const m of await fetchMintedChannels(client, OPENRAILS_PACKAGE_ID, account.address)) {
+          const key = m.id.toLowerCase();
+          if (!byId.has(key)) {
+            const entry: MyChannelEntry = { id: m.id, role: m.role, kind: "Paycard", createdAt: Date.now() };
+            byId.set(key, entry);
+            recordChannel(entry); // persist discovery
+          }
+        }
+      } catch { /* discovery is best-effort */ }
+    }
+    const entries = [...byId.values()].sort((a, b) => b.createdAt - a.createdAt);
+
     const loaded = await Promise.all(
       entries.map(async (entry): Promise<Loaded> => {
         try {
           const view = await fetchPaycard(client, entry.id);
-          // Settled channel → read its terminal receipt straight from chain
-          // (no dependency on the Worker's 5-min receipt indexer).
           const receipt = view && view.status !== 0
             ? await fetchReceiptForPaycard(client, OPENRAILS_PACKAGE_ID, entry.id)
             : null;
@@ -132,14 +150,28 @@ export function ChannelsPanel() {
       }),
     );
     setItems(loaded);
-  }, [client]);
+  }, [client, account]);
 
   useEffect(() => { load(); }, [load]);
 
-  const importChannel = () => {
-    const id = importId.trim();
-    if (!/^0x[0-9a-fA-F]+$/.test(id)) return;
-    recordChannel({ id, role: "payer", kind: "RailsCard" });
+  const importChannel = async () => {
+    const raw = importId.trim();
+    setImportErr(null);
+    let id: string | null = null;
+    if (/^0x[0-9a-fA-F]{2,}$/.test(raw)) {
+      id = raw; // looks like an object id
+    } else if (raw.length > 0) {
+      // Treat as a transaction digest → resolve the created Paycard id.
+      try {
+        id = await paycardIdFromTx(client, raw);
+        if (!id) { setImportErr("No Paycard was created in that transaction."); return; }
+      } catch {
+        setImportErr("Couldn't resolve that — paste a paycard object id (0x…) or a tx digest.");
+        return;
+      }
+    }
+    if (!id) { setImportErr("Paste a paycard object id (0x…) or a transaction digest."); return; }
+    recordChannel({ id, role: "payer", kind: "Paycard" });
     setImportId("");
     load();
   };
@@ -151,12 +183,13 @@ export function ChannelsPanel() {
         <button type="button" className="act-link" onClick={load}>refresh</button>
       </div>
       <div className="pb">
-        <p style={{ marginBottom: 14 }}>Channels you create or fund from this browser, read live from chain (independent of the gateway index).</p>
+        <p style={{ marginBottom: 14 }}>Channels you open are auto-discovered from chain for the connected wallet, read live (independent of the gateway index). You can also import one by id or transaction digest.</p>
 
         <div className="import-row">
-          <input value={importId} onChange={(e) => setImportId(e.target.value)} placeholder="import a paycard id (0x…)" className="mono" />
+          <input value={importId} onChange={(e) => setImportId(e.target.value)} placeholder="import by paycard id (0x…) or tx digest" className="mono" />
           <button type="button" className="btn btn-ghost" onClick={importChannel}>import</button>
         </div>
+        {importErr ? <div className="status-line warn" style={{ marginBottom: 14 }}>{importErr}</div> : null}
 
         {items === null ? (
           <div className="dt-empty">loading…</div>

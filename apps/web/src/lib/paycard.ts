@@ -57,6 +57,36 @@ function sameId(a: string, b: string): boolean {
 }
 
 /**
+ * Auto-discover channels the address opened (was the payer/sender of), straight
+ * from PaycardMinted events — so the user's own channels appear without any
+ * manual import or localStorage. Card-vs-flow can't be known from chain.
+ */
+export async function fetchMintedChannels(
+  client: SuiClient,
+  packageId: string,
+  address: string,
+): Promise<Array<{ id: string; role: "payer" }>> {
+  // The fullnode rejects the {All:[...]} combinator, so filter by sender and
+  // match the PaycardMinted event type client-side (the payer is the sender).
+  const res = await client.queryEvents({ query: { Sender: address }, limit: 50, order: "descending" });
+  const mintType = `${packageId}::events::PaycardMinted`;
+  const out: Array<{ id: string; role: "payer" }> = [];
+  for (const ev of res.data) {
+    if (ev.type !== mintType) continue;
+    const p = ev.parsedJson as Record<string, unknown> | undefined;
+    if (p && typeof p.paycard_id === "string") out.push({ id: p.paycard_id, role: "payer" });
+  }
+  return out;
+}
+
+/** Resolve a created Paycard id from a transaction digest (for import-by-tx). */
+export async function paycardIdFromTx(client: SuiClient, digest: string): Promise<string | null> {
+  const res = await client.getTransactionBlock({ digest, options: { showObjectChanges: true } });
+  const changes = (res.objectChanges ?? []) as Array<{ type?: string; objectType?: string; objectId?: string }>;
+  return changes.find((c) => c.type === "created" && typeof c.objectType === "string" && c.objectType.includes("::paycard_v1::Paycard"))?.objectId ?? null;
+}
+
+/**
  * Read a paycard's SettlementReceipt directly from chain (no Worker dependency).
  * Scans recent SettlementReceipt events for the package and matches by paycard id.
  */
